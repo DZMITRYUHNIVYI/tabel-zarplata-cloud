@@ -1,0 +1,5 @@
+data/tabel-state.backup.json
+data/tabel-state.tmp.json
+data/history/
+node_modules/
+.env

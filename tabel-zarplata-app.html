@@ -1,0 +1,4184 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#176b87">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Табели">
+  <title>Табель, зарплаты и счета</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #fff;
+      --ink: #172026;
+      --muted: #687681;
+      --line: #dce3e8;
+      --accent: #176b87;
+      --good: #2d8f6f;
+      --danger: #b43d3d;
+      --warn: #9a6500;
+      --soft: #eaf3f1;
+      --shadow: 0 12px 30px rgba(25, 40, 50, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px 18px 10px;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+    }
+    h1 {
+      font-size: 22px;
+      line-height: 1.2;
+      margin: 0;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    button, .button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      min-height: 36px;
+      padding: 0 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    button.good { background: var(--good); color: white; border-color: var(--good); }
+    button.danger { color: var(--danger); border-color: #f0cccc; }
+    button.icon { width: 36px; padding: 0; font-size: 18px; }
+    nav {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 18px 12px;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+    }
+    nav button { min-width: 112px; background: transparent; }
+    nav button.active {
+      background: var(--soft);
+      border-color: #b9d8d2;
+      color: #0f5c48;
+    }
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+    .view { display: none; }
+    .view.active { display: block; }
+    .grid { display: grid; gap: 14px; }
+    .grid.two { grid-template-columns: minmax(300px, 420px) 1fr; }
+    .grid.three { grid-template-columns: repeat(3, minmax(220px, 1fr)); }
+    .timesheet-page { display: grid; gap: 12px; }
+    .timesheet-page .panel { box-shadow: none; }
+    .timesheet-page .form-grid {
+      grid-template-columns: minmax(180px, 1fr) 170px minmax(260px, 2fr) minmax(220px, 1fr);
+      align-items: start;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .panel-head {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .panel-head h2 {
+      font-size: 16px;
+      margin: 0;
+      line-height: 1.25;
+    }
+    .panel-body { padding: 14px; }
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+    input, select, textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: white;
+      color: var(--ink);
+      padding: 8px 9px;
+      font: inherit;
+    }
+    textarea { min-height: 74px; resize: vertical; }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(120px, 1fr));
+      gap: 10px;
+    }
+    .wide { grid-column: 1 / -1; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      background: #f8fafb;
+    }
+    td.num, th.num { text-align: right; }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .table-wrap.compact {
+      max-height: 68vh;
+      overflow: auto;
+    }
+    .table-wrap.compact table {
+      font-size: 11px;
+      min-width: 0;
+    }
+    .table-wrap.compact th,
+    .table-wrap.compact td {
+      padding: 2px;
+      white-space: nowrap;
+    }
+    .table-wrap.compact thead th {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+    .table-wrap.compact thead tr.week-label-row th {
+      top: 0;
+      height: 27px;
+      background: #dcebe6;
+      color: #23483e;
+      font-size: 10px;
+      text-align: center;
+      text-transform: none;
+    }
+    .table-wrap.compact thead tr.day-label-row th {
+      top: 27px;
+    }
+    .table-wrap.compact thead tr.day-label-row th:first-child {
+      left: auto;
+      min-width: 0;
+      max-width: none;
+      box-shadow: none;
+      z-index: 3;
+    }
+    .table-wrap.compact th:first-child,
+    .table-wrap.compact td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      min-width: 120px;
+      max-width: 140px;
+      background: #fff;
+      box-shadow: 1px 0 0 var(--line);
+    }
+    .table-wrap.compact thead th:first-child {
+      z-index: 4;
+      background: #f8fafb;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      min-height: 92px;
+    }
+    .metric .name {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .metric .value {
+      font-size: 25px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    .metric .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .row-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .muted { color: var(--muted); }
+    .positive { color: #17643f; }
+    .negative { color: var(--danger); }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #edf2f4;
+      color: #53636d;
+    }
+    .status.paid { background: #e7f5ed; color: #17643f; }
+    .status.sent { background: #fff5dc; color: #805600; }
+    .status.draft { background: #eef1f4; color: #53636d; }
+    .status.overdue { background: #fdeaea; color: #9b2f2f; }
+    .timesheet-head, .filters {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    #hoursTable {
+      width: 100%;
+      table-layout: fixed;
+    }
+    #hoursTable col.person-col { width: 128px; }
+    #hoursTable col.day-col { width: 25px; }
+    #hoursTable col.total-col { width: 58px; }
+    #hoursTable .person-name,
+    #hoursTable .person-rate {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #hoursTable .person-rate {
+      font-size: 10px;
+      line-height: 1.1;
+    }
+    .hours-input {
+      width: 100%;
+      min-height: 22px;
+      padding: 1px 2px;
+      text-align: right;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .hours-input::-webkit-outer-spin-button,
+    .hours-input::-webkit-inner-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
+    .hours-input {
+      -moz-appearance: textfield;
+    }
+    .hours-input:focus {
+      outline: 2px solid #8fc7d8;
+      border-color: var(--accent);
+    }
+    .hours-input.selected-cell {
+      background: #eaf3f1;
+      border-color: var(--accent);
+    }
+    .hours-input.active-cell {
+      outline: 2px solid var(--accent);
+      background: #fff;
+    }
+    .hours-input.filled-cell {
+      background: #d9f2df;
+      border-color: #79b98b;
+      color: #14532d;
+      font-weight: 700;
+    }
+    .hours-input.filled-cell.active-cell {
+      background: #ecfff1;
+    }
+    .hours-input.filled-cell.selected-cell {
+      background: #cbe9ef;
+      border-color: var(--accent);
+    }
+    .day-select-header {
+      cursor: pointer;
+      user-select: none;
+    }
+    .weekend-cell {
+      background: #f1f4f6;
+    }
+    th.weekend-cell {
+      color: #9b2f2f;
+    }
+    #timesheets .photo-box,
+    #timesheets #sheetPhoto,
+    #timesheets label[for="sheetPhoto"],
+    #timesheets #sheetNotes {
+      display: none;
+    }
+    #timesheets .form-grid > div:has(#sheetPhoto),
+    #timesheets .form-grid > div:has(#sheetNotes) {
+      display: none;
+    }
+    .employee-picker-tools {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: end;
+    }
+    .employee-match {
+      background: #fff3b8;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+    .sheet-list-compact {
+      min-width: 320px;
+      max-width: 460px;
+      max-height: 180px;
+      overflow: auto;
+      display: grid;
+      gap: 4px;
+      margin-left: auto;
+    }
+    .sheet-list-compact .list-item {
+      padding: 6px 8px;
+      box-shadow: none;
+      font-size: 12px;
+      width: 100%;
+    }
+    .sheet-group {
+      display: grid;
+      gap: 4px;
+    }
+    .sheet-group-title {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 5px 7px;
+      background: #e6edf2;
+      color: #24343d;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .sheet-month-title {
+      padding: 3px 7px 1px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .sheet-mode-banner {
+      margin-bottom: 10px;
+      padding: 9px 11px;
+      border: 1px solid #b8d7c3;
+      border-left: 4px solid var(--good);
+      background: #edf9f1;
+      color: #14532d;
+      font-weight: 800;
+    }
+    .sheet-mode-banner.editing {
+      border-color: #c9d6dc;
+      border-left-color: var(--accent);
+      background: #eef5f7;
+      color: #244b59;
+    }
+    #sheetListSource {
+      display: none;
+    }
+    .totals-row td {
+      background: #f8fafb;
+      font-weight: 700;
+    }
+    .week-total-row td {
+      background: #eef6f4;
+      font-weight: 700;
+    }
+    .month-total-row td {
+      background: #e6edf2;
+      font-weight: 800;
+    }
+    .table-wrap.compact tfoot td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 5;
+      min-width: 150px;
+      max-width: 190px;
+      box-shadow: 1px 0 0 var(--line);
+    }
+    .invoice-sent-cell {
+      background: #fff3b8;
+    }
+    .invoice-paid-cell {
+      background: #cfeeda;
+    }
+    #objectDaysTable {
+      width: 100%;
+      min-width: max-content;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      font-size: 11px;
+    }
+    #objectDaysTable col.object-col { width: 190px; }
+    #objectDaysTable col.object-day-col { width: 34px; }
+    #objectDaysTable col.object-week-col { width: 58px; }
+    #objectDaysTable col.object-total-col { width: 72px; }
+    #objectDaysTable th,
+    #objectDaysTable td {
+      height: 30px;
+      padding: 3px 4px;
+      border-right: 1px solid #bfcbd2;
+      border-bottom: 1px solid #bfcbd2;
+      text-align: center;
+      white-space: nowrap;
+    }
+    #objectDaysTable tr > *:first-child {
+      border-left: 1px solid #bfcbd2;
+    }
+    #objectDaysTable thead tr:first-child > * {
+      border-top: 1px solid #bfcbd2;
+    }
+    #objectDaysTable thead th {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      background: #e7edf1;
+      color: #263842;
+      font-weight: 800;
+    }
+    #objectDaysTable thead tr.week-label-row th {
+      top: 0;
+      height: 30px;
+      background: #d8e8e2;
+      color: #204f40;
+      text-transform: none;
+    }
+    #objectDaysTable thead tr.day-label-row th {
+      top: 30px;
+    }
+    #objectDaysTable thead tr.day-label-row th:first-child {
+      left: auto;
+      min-width: 0;
+      text-align: center;
+      box-shadow: none;
+      z-index: 4;
+    }
+    #objectDaysTable th:first-child,
+    #objectDaysTable td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      text-align: left;
+      background: #fff;
+      font-weight: 700;
+      box-shadow: 2px 0 0 #aebbc2;
+    }
+    #objectDaysTable thead th:first-child {
+      z-index: 5;
+      background: #dce6eb;
+    }
+    #objectDaysTable tbody tr:hover td {
+      box-shadow: inset 0 0 0 999px rgba(23, 107, 135, .055);
+    }
+    #objectDaysTable td.object-hours-cell {
+      color: #173f4e;
+      font-weight: 700;
+    }
+    #objectDaysTable .object-total-cell {
+      background: #eaf3f1;
+      font-weight: 800;
+    }
+    #objectDaysTable .object-week-cell {
+      background: #eef6f4;
+      color: #185443;
+      font-weight: 800;
+      border-left: 2px solid #93aaa3;
+    }
+    #objectDaysTable th.object-week-cell {
+      background: #dcebe6;
+    }
+    #objectDaysTable tfoot td {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      background: #dfe9ed;
+      font-weight: 800;
+      border-top: 2px solid #80939d;
+    }
+    #objectDaysTable tfoot td:first-child {
+      z-index: 4;
+      background: #d5e1e6;
+    }
+    #objectDaysTable .weekend-cell {
+      background: #f0f2f4;
+    }
+    #objectDaysTable th.weekend-cell {
+      background: #e4e7ea;
+      color: #9b2f2f;
+    }
+    #objectDaysTable td.invoice-sent-cell {
+      background: #fff0a8;
+      color: #6d4a00;
+    }
+    #objectDaysTable td.invoice-paid-cell {
+      background: #c8ebd2;
+      color: #155c35;
+    }
+    .weekly-summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .weekly-summary-table th,
+    .weekly-summary-table td {
+      border: 1px solid #bfcbd2;
+      padding: 7px 8px;
+      text-align: right;
+    }
+    .weekly-summary-table th {
+      background: #dcebe6;
+      color: #23483e;
+      font-weight: 800;
+    }
+    .weekly-summary-table th:first-child,
+    .weekly-summary-table td:first-child {
+      min-width: 190px;
+      text-align: left;
+      font-weight: 700;
+    }
+    .weekly-summary-table tbody tr:nth-child(even) td {
+      background: #f8fafb;
+    }
+    .weekly-summary-table td:last-child {
+      background: #eaf3f1;
+      font-weight: 800;
+    }
+    .sum-selected-cell {
+      position: relative;
+      outline: 2px solid #176b87;
+      outline-offset: -2px;
+      background: #dceff5 !important;
+    }
+    .selection-sum-bar {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 30;
+      display: none;
+      min-width: 180px;
+      padding: 9px 12px;
+      border: 1px solid #8db5c2;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(25, 40, 50, .18);
+      color: #173f4e;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .selection-sum-bar.visible {
+      display: block;
+    }
+    .mobile-week-nav {
+      display: none;
+    }
+    .photo-box {
+      min-height: 170px;
+      border: 1px dashed #b8c5cc;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #f8fafb;
+      color: var(--muted);
+      text-align: center;
+      padding: 12px;
+    }
+    .photo-box img {
+      max-width: 100%;
+      max-height: 360px;
+      display: block;
+    }
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .photo-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .photo-card img {
+      width: 100%;
+      height: 110px;
+      object-fit: cover;
+    }
+    .photo-card button {
+      width: 100%;
+      border: 0;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      min-height: 28px;
+      color: var(--danger);
+    }
+    .list { display: grid; gap: 8px; }
+    .check-list {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      max-height: 180px;
+      overflow: auto;
+      background: #fff;
+      padding: 6px;
+      display: grid;
+      gap: 4px;
+    }
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px;
+      border-radius: 6px;
+      color: var(--ink);
+      font-size: 13px;
+    }
+    .check-row:hover { background: #f4f8fa; }
+    .check-row input {
+      width: auto;
+      min-height: 0;
+    }
+    .list-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: white;
+      display: grid;
+      gap: 6px;
+      height: auto;
+      text-align: left;
+    }
+    .list-item.active {
+      border-color: #9fcfc5;
+      background: #f2faf8;
+    }
+    .list-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+    }
+    .small { font-size: 12px; }
+    .empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+    .footer-note {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .report-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      font-size: 14px;
+    }
+    .report-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: end;
+      margin: 14px 0 10px;
+    }
+    .report-actions > div { min-width: 240px; }
+    .payroll-print-layout {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+    }
+    .print-controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(170px, 1fr));
+      gap: 10px;
+    }
+    .print-actions {
+      min-width: 280px;
+      display: grid;
+      gap: 8px;
+    }
+    .dashboard-filters {
+      display: grid;
+      grid-template-columns: 180px minmax(220px, 320px) auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+    #payroll .filters,
+    #payroll .panel-body > .panel,
+    #payrollTable,
+    #payroll .panel-body > .footer-note,
+    #payroll .report-actions,
+    #payrollMetrics {
+      display: none;
+    }
+    .payroll-print-top {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(145px, 1fr)) minmax(210px, auto);
+      gap: 8px;
+      align-items: end;
+      width: min(1120px, 100%);
+    }
+    .payroll-print-top button {
+      height: 36px;
+    }
+    .payroll-mobile-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(100px, 1fr));
+      gap: 8px;
+    }
+    .payroll-copy-status {
+      min-height: 18px;
+      margin-top: 8px;
+      color: #18724d;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .payroll-report-title {
+      margin: 2px 0 8px;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .mobile-payroll-breakdown {
+      display: none;
+    }
+    .settlement-toolbar {
+      display: grid;
+      grid-template-columns: 190px minmax(220px, 1fr);
+      gap: 10px;
+      width: min(620px, 100%);
+    }
+    .settlement-groups {
+      display: grid;
+      gap: 12px;
+    }
+    .settlement-columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+    .settlement-columns > .panel {
+      min-width: 0;
+      width: 100%;
+    }
+    .settlement-project {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .settlement-project-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 11px;
+      background: #edf3f5;
+      font-size: 13px;
+    }
+    .settlement-person {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 80px 120px auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 48px;
+      padding: 7px 11px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+    .settlement-person .amount {
+      font-weight: 800;
+      text-align: right;
+    }
+    .inline-input {
+      min-width: 90px;
+      min-height: 30px;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+    .inline-input.name { min-width: 170px; }
+    .inline-input.account { min-width: 220px; }
+    .payroll-summary {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .payroll-summary .metric {
+      min-height: 0;
+      padding: 8px 10px;
+      box-shadow: none;
+      min-width: 130px;
+    }
+    .payroll-summary .metric .name {
+      margin-bottom: 3px;
+      font-size: 11px;
+    }
+    .payroll-summary .metric .value {
+      font-size: 16px;
+    }
+    .payroll-summary .metric .hint {
+      display: none;
+    }
+    @media (max-width: 920px) {
+      .topbar, .grid.two, .grid.three, .timesheet-head, .filters, .timesheet-page .form-grid, .payroll-print-layout, .print-controls, .dashboard-filters {
+        grid-template-columns: 1fr;
+      }
+      .toolbar { justify-content: flex-start; }
+      main { padding: 12px; }
+      .panel-head { align-items: flex-start; flex-direction: column; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      body {
+        padding-bottom: 76px;
+        background: #eef2f4;
+      }
+      header {
+        position: static;
+      }
+      .topbar {
+        padding: 10px 12px;
+        display: block;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      .subtitle {
+        display: none;
+      }
+      .topbar > .toolbar {
+        margin-top: 8px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 3px;
+      }
+      .topbar > .toolbar button,
+      .topbar > .toolbar .button {
+        min-height: 34px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+      nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 40;
+        max-width: none;
+        padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+        gap: 3px;
+        overflow-x: auto;
+        background: #fff;
+        border-top: 1px solid var(--line);
+        box-shadow: 0 -6px 20px rgba(25, 40, 50, .12);
+      }
+      nav button {
+        min-width: 80px;
+        min-height: 50px;
+        padding: 4px 7px;
+        border: 0;
+        font-size: 11px;
+        line-height: 1.15;
+        white-space: normal;
+      }
+      main {
+        padding: 8px;
+      }
+      .panel {
+        border-radius: 6px;
+      }
+      .panel-head,
+      .panel-body {
+        padding: 10px;
+      }
+      .panel-head {
+        gap: 8px;
+      }
+      .panel-head h2 {
+        font-size: 15px;
+      }
+      button, .button, input, select, textarea {
+        min-height: 44px;
+        font-size: 16px;
+      }
+      .toolbar {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .toolbar > * {
+        width: 100%;
+      }
+      .timesheet-head {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .timesheet-page {
+        display: flex;
+        flex-direction: column;
+      }
+      .timesheet-page > .panel:first-child {
+        order: 2;
+      }
+      .timesheet-page > .panel:nth-child(2) {
+        order: 1;
+      }
+      .timesheet-head label {
+        font-size: 10px;
+      }
+      .timesheet-head input {
+        min-height: 38px;
+        padding: 6px;
+        font-size: 13px;
+      }
+      .sheet-list-compact {
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        max-height: 180px;
+        margin: 0;
+      }
+      .employee-picker-tools {
+        grid-template-columns: 1fr 62px 70px;
+      }
+      .check-list {
+        max-height: 230px;
+      }
+      .check-row {
+        min-height: 42px;
+        align-items: center;
+      }
+      .mobile-week-nav {
+        display: grid;
+        grid-template-columns: 44px 1fr 44px;
+        gap: 6px;
+        align-items: center;
+        margin: 0 0 8px;
+        padding: 6px;
+        border: 1px solid #b8d1d8;
+        border-radius: 6px;
+        background: #eef7f8;
+        text-align: center;
+      }
+      .mobile-week-nav button {
+        width: 44px;
+        min-height: 42px;
+        padding: 0;
+        font-size: 25px;
+      }
+      .mobile-week-nav strong {
+        font-size: 12px;
+        line-height: 1.25;
+      }
+      #hoursTable {
+        min-width: 100%;
+      }
+      #hoursTable col.person-col { width: 105px; }
+      #hoursTable col.day-col { width: 36px; }
+      #hoursTable col.total-col { width: 74px; }
+      #hoursTable .hours-input {
+        min-height: 42px;
+        padding: 4px;
+        font-size: 16px;
+      }
+      #hoursTable th,
+      #hoursTable td {
+        padding: 3px;
+      }
+      #hoursTable .person-name {
+        font-size: 12px;
+      }
+      #hoursTable .person-rate {
+        font-size: 9px;
+      }
+      .table-wrap.compact #hoursTable th:first-child,
+      .table-wrap.compact #hoursTable td:first-child {
+        min-width: 105px;
+        max-width: 105px;
+      }
+      #timesheets .footer-note:not(#timesheetSaveStatus) {
+        display: none;
+      }
+      #objectDaysTable {
+        font-size: 12px;
+      }
+      #objectDaysTable col.object-col { width: 145px; }
+      #objectDaysTable th,
+      #objectDaysTable td {
+        height: 38px;
+      }
+      .weekly-summary-table th:first-child,
+      .weekly-summary-table td:first-child {
+        min-width: 145px;
+      }
+      .selection-sum-bar {
+        left: 10px;
+        right: 10px;
+        bottom: calc(70px + env(safe-area-inset-bottom));
+        text-align: center;
+      }
+      .report-box {
+        font-size: 14px;
+        padding: 12px;
+      }
+      #payroll > .panel {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      #payroll > .panel > .panel-head,
+      #payroll > .panel > .panel-body {
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+      }
+      #payroll > .panel > .panel-body {
+        margin-top: 8px;
+      }
+      #payroll .payroll-print-top {
+        width: 100%;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      #payroll .payroll-print-top > div {
+        min-width: 0;
+        width: 100%;
+      }
+      #payroll .payroll-print-top input,
+      #payroll .payroll-print-top select {
+        width: 100%;
+      }
+      #payroll .payroll-mobile-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      #payroll .payroll-mobile-actions button {
+        width: 100%;
+        height: 46px;
+        padding: 0 8px;
+        font-size: 14px;
+      }
+      #payroll .report-box {
+        border: 1px solid #aac9bd;
+        border-left: 4px solid #23815f;
+        background: #fff;
+        padding: 14px;
+        font-size: 15px;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .mobile-payroll-breakdown {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .mobile-payroll-card {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 5px 10px;
+        padding: 12px;
+        border: 1px solid #cbd8d3;
+        border-radius: 6px;
+        background: #f8fbfa;
+      }
+      .mobile-payroll-card strong {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-size: 14px;
+      }
+      .mobile-payroll-card .payroll-card-total {
+        color: #17684b;
+        font-size: 15px;
+        font-weight: 800;
+        text-align: right;
+      }
+      .mobile-payroll-card .payroll-card-detail {
+        grid-column: 1 / -1;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .mobile-payroll-empty {
+        padding: 14px;
+        border: 1px dashed var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        background: #fff;
+        text-align: center;
+      }
+      .settlement-toolbar {
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+      .settlement-columns {
+        grid-template-columns: 1fr;
+      }
+      .settlement-person {
+        grid-template-columns: 1fr auto;
+        gap: 5px 10px;
+        padding: 11px;
+      }
+      .settlement-person .hours {
+        color: var(--muted);
+      }
+      .settlement-person .amount {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .settlement-person button {
+        grid-column: 1 / -1;
+        width: 100%;
+        margin-top: 4px;
+      }
+    }
+    /* Desktop workspace: dense navigation and a full-width operational canvas. */
+    @media (min-width: 921px) {
+      :root {
+        --bg: #f3f6f5;
+        --panel: #ffffff;
+        --ink: #16252b;
+        --muted: #62727a;
+        --line: #d8e2e1;
+        --accent: #0e7668;
+        --good: #16835f;
+        --soft: #e6f2ee;
+        --shadow: 0 2px 10px rgba(26, 47, 51, .06);
+      }
+      body {
+        min-height: 100vh;
+        padding-left: 236px;
+        background: linear-gradient(90deg, #10242a 0 236px, var(--bg) 236px);
+      }
+      header {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: 236px;
+        display: flex;
+        flex-direction: column;
+        background: #10242a;
+        border: 0;
+        box-shadow: 3px 0 18px rgba(12, 31, 36, .14);
+        z-index: 40;
+      }
+      .topbar {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 18px;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 24px 16px 14px;
+      }
+      h1 {
+        color: #f5fbfa;
+        font-size: 21px;
+        font-weight: 800;
+      }
+      .subtitle {
+        color: #a9bfbe;
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 6px;
+      }
+      .topbar > .toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .topbar > .toolbar button,
+      .topbar > .toolbar .button {
+        min-height: 32px;
+        padding: 0 8px;
+        border-color: rgba(220, 239, 235, .16);
+        border-radius: 5px;
+        background: rgba(255, 255, 255, .06);
+        color: #d9e9e7;
+        font-size: 11px;
+      }
+      .topbar > .toolbar button:hover,
+      .topbar > .toolbar .button:hover {
+        background: rgba(255, 255, 255, .12);
+        border-color: rgba(220, 239, 235, .28);
+      }
+      #pushLocalToCloudBtn { display: none; }
+      nav {
+        display: grid;
+        align-content: start;
+        gap: 3px;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 8px 10px 18px;
+        overflow: visible;
+      }
+      nav button {
+        width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        justify-content: flex-start;
+        padding: 0 12px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: #b9cecc;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+      }
+      nav button:hover {
+        background: rgba(255, 255, 255, .06);
+        color: #f3fbfa;
+      }
+      nav button.active {
+        background: #e1f0eb;
+        border-color: #e1f0eb;
+        color: #0d554b;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, .13);
+      }
+      main {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 24px 28px 36px;
+      }
+      .view.active { animation: view-in .16s ease-out; }
+      @keyframes view-in {
+        from { opacity: .35; transform: translateY(3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .grid { gap: 16px; }
+      .grid.two { grid-template-columns: minmax(360px, .82fr) minmax(0, 1.55fr); }
+      .panel {
+        border-color: #d6e1df;
+        border-radius: 7px;
+        box-shadow: var(--shadow);
+      }
+      .panel-head {
+        min-height: 56px;
+        padding: 12px 16px;
+        background: #fcfefd;
+        border-bottom-color: #e1e9e8;
+      }
+      .panel-head h2 {
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .panel-body { padding: 16px; }
+      button, .button {
+        min-height: 34px;
+        border-radius: 5px;
+        font-size: 12px;
+        transition: background .14s ease, border-color .14s ease, transform .14s ease;
+      }
+      button:hover, .button:hover { border-color: #9fbbb5; }
+      button:active, .button:active { transform: translateY(1px); }
+      button.primary { background: var(--accent); border-color: var(--accent); }
+      button.good { background: var(--good); border-color: var(--good); }
+      input, select, textarea {
+        min-height: 34px;
+        border-radius: 5px;
+        border-color: #cad8d6;
+        background: #fff;
+        font-size: 13px;
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: 2px solid rgba(14, 118, 104, .16);
+        border-color: #259583;
+      }
+      table { font-size: 12px; }
+      th, td { padding: 8px 9px; }
+      th {
+        background: #f3f7f6;
+        color: #52666a;
+        font-size: 10px;
+      }
+      tbody tr:hover td { background: #f7fbfa; }
+      .table-wrap { border-radius: 6px; border-color: #d8e3e1; }
+      .dashboard-filters { margin: 0; }
+      #dashboard > .panel { background: transparent; border: 0; box-shadow: none; }
+      #dashboard > .panel > .panel-head { padding: 0 0 16px; min-height: 0; background: transparent; border: 0; }
+      #dashboard > .grid.two { margin-top: 0 !important; }
+      #timesheets .timesheet-page { gap: 16px; }
+      #timesheets .timesheet-page .panel { box-shadow: var(--shadow); }
+      #timesheets .timesheet-page > .panel:first-child .panel-head { display: none; }
+      #timesheets .timesheet-page > .panel:first-child .panel-body { padding: 14px 16px; }
+      #timesheets .timesheet-page .form-grid {
+        grid-template-columns: minmax(190px, 1fr) 150px minmax(330px, 2fr) auto;
+        gap: 12px;
+      }
+      #timesheets .timesheet-page .form-grid > div:has(#sheetPeopleSearch) {
+        grid-column: 3 / -1;
+      }
+      #timesheets .check-list {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+        max-height: 118px;
+        gap: 3px 8px;
+        padding: 7px;
+      }
+      #timesheets .check-row { min-height: 28px; padding: 4px 6px; font-size: 12px; }
+      #timesheets .sheet-mode-banner { display: none; }
+      #timesheets .sheet-list-compact {
+        grid-column: 1 / -1;
+        width: 100%;
+        max-width: none;
+        max-height: 102px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: start;
+        margin: 0;
+      }
+      #timesheets .sheet-group { min-width: 0; }
+      #timesheets .sheet-list-compact .list-item { text-align: left; }
+      #timesheets .timesheet-head {
+        grid-template-columns: minmax(240px, 1.5fr) 170px 140px;
+        width: min(720px, 100%);
+        margin-bottom: 10px;
+      }
+      #timesheets .timesheet-head input { font-weight: 700; background: #f6faf9; }
+      #timesheets .table-wrap.compact { max-height: calc(100vh - 365px); min-height: 360px; }
+      #hoursTable col.person-col { width: 150px; }
+      #hoursTable col.day-col { width: 28px; }
+      #hoursTable col.total-col { width: 72px; }
+      #hoursTable .hours-input { min-height: 25px; font-size: 11px; }
+      #hoursTable .person-rate { font-size: 9px; }
+      .selection-sum-bar { border-radius: 6px; box-shadow: 0 8px 22px rgba(17, 40, 43, .18); }
+      #people .grid.two, #projects .grid.two, #invoices .grid.two { grid-template-columns: minmax(330px, .72fr) minmax(0, 1.65fr); }
+      #payroll > .panel, #settlements > .panel, #objectDays > .panel { box-shadow: var(--shadow); }
+      .settlement-columns { gap: 16px; }
+      .settlement-project { border-radius: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div>
+        <h1>Табели</h1>
+        <div class="subtitle">Время, сотрудники, зарплаты и выплаты</div>
+      </div>
+      <div class="toolbar">
+        <button id="exportJsonBtn" title="Скачать резервную копию">Экспорт</button>
+        <button id="exportExcelBtn" title="Скачать отчет для Excel">Excel</button>
+        <label class="button" title="Загрузить резервную копию">Импорт <input id="importJsonInput" type="file" accept="application/json" hidden></label>
+        <button id="pushLocalToCloudBtn" title="Перенести данные этого браузера на общий сервер">На сервер</button>
+        <button id="printBtn" title="Печать текущего отчета">Печать</button>
+      </div>
+    </div>
+    <nav id="tabs">
+      <button class="active" data-view="dashboard">Обзор</button>
+      <button data-view="timesheets">Табели</button>
+      <button data-view="people">Сотрудники</button>
+      <button data-view="projects">Объекты</button>
+      <button data-view="objectDays">Объекты по дням</button>
+      <button data-view="invoices">Счета</button>
+      <button data-view="payroll">Зарплаты</button>
+      <button data-view="settlements">Выплаты</button>
+      <button data-view="inbox">Входящие</button>
+    </nav>
+  </header>
+  <main>
+    <section id="dashboard" class="view active">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Обзор</h2>
+          <div class="dashboard-filters">
+            <div><label>Месяц</label><input id="dashboardMonth" type="month"></div>
+            <div><label>Объект</label><select id="dashboardProject"></select></div>
+            <button id="dashboardClearBtn" type="button">Сбросить</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="panel">
+          <div class="panel-head"><h2>Объекты</h2></div>
+          <div class="panel-body"><div class="table-wrap"><table id="projectProfitTable"></table></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Табели и сотрудники</h2></div>
+          <div class="panel-body"><div class="table-wrap"><table id="invoiceSummaryTable"></table></div></div>
+        </div>
+      </div>
+    </section>
+    <section id="timesheets" class="view">
+      <div class="timesheet-page">
+        <div class="panel">
+          <div class="panel-head"><h2>Месяцы и фото табеля</h2></div>
+          <div class="panel-body">
+            <div class="sheet-mode-banner editing" id="sheetModeBanner">Редактирование выбранного табеля</div>
+            <div class="form-grid">
+              <div><label>Объект</label><select id="sheetProject"></select></div>
+              <div><label>Месяц</label><input id="sheetWeek" type="month"></div>
+              <div class="wide"><label>Сотрудники в табеле</label><div class="employee-picker-tools"><input id="sheetPeopleSearch" placeholder="Начните вводить имя или фамилию"><button id="selectAllSheetPeopleBtn" type="button">Все</button><button id="clearSheetPeopleBtn" type="button">Снять</button></div><div class="check-list" id="sheetPeopleList"></div><div class="footer-note" id="sheetPeopleHint" style="margin-top:6px">Отметьте сотрудника, и строка сразу появится в табеле.</div></div>
+              <div class="wide"><label>Фото табеля</label><input id="sheetPhoto" type="file" accept="image/*" multiple></div>
+              <div class="wide"><label>Комментарий</label><textarea id="sheetNotes" placeholder="Например: фото получено в WhatsApp, проверено с бригадиром"></textarea></div>
+              <div class="wide toolbar" style="justify-content:flex-start"><button class="good" id="saveSheetMetaBtn">Обновить табель</button><button id="cancelNewSheetBtn" type="button" hidden>Отменить создание</button></div>
+            </div>
+            <div style="height:12px"></div>
+            <div class="photo-box" id="photoPreview">Фото табеля появится здесь</div>
+            <div style="height:12px"></div>
+            <div class="list" id="sheetListSource"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Часы по дням</h2>
+            <div class="toolbar"><button class="primary" id="newSheetBtn">Новый табель</button><button id="copyPrevWeekBtn">Повторить прошлый месяц</button><button class="danger" id="deleteSheetBtn">Удалить</button></div>
+            <div class="sheet-list-compact" id="sheetList"></div>
+          </div>
+          <div class="panel-body">
+            <div class="timesheet-head">
+              <div><label>Выбранный объект</label><input id="activeSheetProject" disabled></div>
+              <div><label>Месяц</label><input id="activeSheetWeek" disabled></div>
+              <div><label>Итого часов</label><input id="activeSheetHours" disabled></div>
+            </div>
+            <div class="footer-note" style="margin:0 0 8px">Стрелки перемещают активную ячейку, Enter переводит вправо. Shift+клик выделяет диапазон, Ctrl+C копирует, Ctrl+V вставляет.</div>
+            <div class="mobile-week-nav" id="mobileWeekNav">
+              <button id="mobilePrevWeekBtn" type="button" title="Предыдущая неделя">‹</button>
+              <strong id="mobileWeekLabel"></strong>
+              <button id="mobileNextWeekBtn" type="button" title="Следующая неделя">›</button>
+            </div>
+            <div class="toolbar" style="justify-content:flex-start;margin-bottom:8px">
+              <button id="selectHourRowBtn">Строка</button>
+              <button id="copyHoursBtn">Копировать</button>
+              <button id="pasteHoursBtn">Вставить</button>
+            </div>
+            <div class="table-wrap compact"><table id="hoursTable"></table></div>
+            <div class="toolbar" style="margin-top:10px">
+              <span class="footer-note" id="timesheetSaveStatus" style="margin-right:auto">Изменения сохраняются автоматически.</span>
+              <button id="exportCurrentSheetBtn">Excel табеля</button>
+              <button class="good" id="saveTimesheetBtn">Сохранить табель</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="people" class="view">
+      <div class="grid two">
+        <div class="panel">
+          <div class="panel-head"><h2>Добавить сотрудника</h2></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="wide"><label>Имя</label><input id="personName" placeholder="Иван Иванов"></div>
+              <div><label>Ставка, в час</label><input id="personRate" type="number" min="0" step="0.01" placeholder="20"></div>
+              <div><label>Валюта</label><input id="personCurrency" value="€"></div>
+              <div class="wide"><label>Юридическое лицо</label><select id="personLegalEntity"></select></div>
+              <div class="wide"><label>Счет для зарплаты</label><input id="personBankAccount" placeholder="IBAN или номер счета"></div>
+              <div><label>Кому принадлежит счет</label><select id="personAccountOwnerType"><option value="self">Сотруднику</option><option value="other">Другому человеку</option></select></div>
+              <div><label>Владелец счета</label><input id="personAccountOwnerName" placeholder="Оставьте пустым, если счет сотрудника"></div>
+              <div class="wide"><label>Заметки</label><textarea id="personNotes"></textarea></div>
+              <div class="wide"><button class="primary" id="addPersonBtn">Сохранить сотрудника</button></div>
+              <div class="wide"><label>Добавить сотрудников списком</label><textarea id="bulkPeopleInput" placeholder="ИМЯ; СТАВКА; ЮР.ЛИЦО; СЧЕТ; ВЛАДЕЛЕЦ СЧЕТА&#10;DZIAZHYNSKI MIKALAI;15;ZGROUP;72102038020000120203130663&#10;BIAHEBA IVAN;13;HOLZPOL;06102052420000240206401287"></textarea></div>
+              <div class="wide"><button id="addBulkPeopleBtn">Добавить список</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel"><div class="panel-head"><h2>Сотрудники</h2><button id="exportPeopleByProjectBtn">Excel по объектам</button></div><div class="panel-body"><div style="margin-bottom:10px"><label>Быстрый фильтр</label><input id="peopleFilter" placeholder="Имя, юр. лицо, счет или объект"></div><div class="table-wrap"><table id="peopleTable"></table></div></div></div>
+      </div>
+    </section>
+    <section id="projects" class="view">
+      <div class="grid two">
+        <div class="panel">
+          <div class="panel-head"><h2>Добавить объект</h2></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="wide"><label>Название объекта</label><input id="projectName" placeholder="Hotel Centrum"></div>
+              <div><label>Тариф компании, в час</label><input id="projectBillRate" type="number" min="0" step="0.01" placeholder="32"></div>
+              <div><label>Валюта</label><input id="projectCurrency" value="€"></div>
+              <div class="wide"><label>Клиент / адрес</label><input id="projectClient" placeholder="Клиент, адрес или контакт"></div>
+              <div class="wide"><label>Заметки</label><textarea id="projectNotes"></textarea></div>
+              <div class="wide"><button class="primary" id="addProjectBtn">Сохранить объект</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel"><div class="panel-head"><h2>Объекты</h2></div><div class="panel-body"><div class="table-wrap"><table id="projectsTable"></table></div></div></div>
+      </div>
+    </section>
+    <section id="objectDays" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Объекты по дням</h2>
+          <div style="min-width:180px"><label>Месяц</label><input id="objectDaysMonth" type="month"></div>
+        </div>
+        <div class="panel-body">
+          <div class="footer-note" style="margin:0 0 8px">Желтый цвет: счет выставлен. Зеленый: счет оплачен. Протяните мышью по числовым ячейкам — сумма выделения появится снизу справа.</div>
+          <div class="table-wrap compact"><table id="objectDaysTable"></table></div>
+          <div style="height:14px"></div>
+          <h3 style="margin:0 0 8px;font-size:14px">Сумма часов по неделям для каждого объекта</h3>
+          <div class="table-wrap"><table class="weekly-summary-table" id="objectWeeksTable"></table></div>
+        </div>
+      </div>
+    </section>
+    <section id="invoices" class="view">
+      <div class="grid two">
+        <div class="panel">
+          <div class="panel-head"><h2>Выставить счет</h2></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div><label>Объект</label><select id="invoiceProject"></select></div>
+              <div><label>Номер счета</label><input id="invoiceNumber" placeholder="INV-001"></div>
+              <div><label>Дата счета</label><input id="invoiceDate" type="date"></div>
+              <div><label>Период работ с</label><input id="invoicePeriodFrom" type="date"></div>
+              <div><label>Период работ по</label><input id="invoicePeriodTo" type="date"></div>
+              <div><label>Срок оплаты</label><input id="invoiceDue" type="date"></div>
+              <div><label>Сумма</label><input id="invoiceAmount" type="number" min="0" step="0.01"></div>
+              <div><label>Статус</label><select id="invoiceStatus"><option value="draft">Черновик</option><option value="sent">Выставлен</option><option value="paid">Оплачен</option></select></div>
+              <div class="wide"><label>Заметки</label><textarea id="invoiceNotes"></textarea></div>
+              <div class="wide"><button class="primary" id="addInvoiceBtn">Сохранить счет</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel"><div class="panel-head"><h2>Счета</h2></div><div class="panel-body"><div class="table-wrap"><table id="invoicesTable"></table></div></div></div>
+      </div>
+    </section>
+    <section id="payroll" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Печатная форма</h2>
+          <div class="payroll-print-top">
+            <div><label>Месяц</label><input id="printReportMonth" type="month"></div>
+            <div><label>Быстрый поиск сотрудника</label><input id="printPersonSearch" placeholder="Начните вводить фамилию"><select id="printReportPerson" style="margin-top:5px"></select></div>
+            <div><label>Быстрый поиск объекта</label><input id="printProjectSearch" placeholder="Начните вводить объект"><select id="printReportProject" style="margin-top:5px"></select></div>
+            <div class="payroll-mobile-actions">
+              <button class="good" id="copyPayrollReportBtn">Копировать расчёт</button>
+              <button id="printEmployeeReportBtn">Печать</button>
+            </div>
+          </div>
+          <div class="payroll-copy-status" id="copyPayrollStatus" aria-live="polite"></div>
+          <div class="payroll-summary" id="payrollMetrics"></div>
+        </div>
+        <div class="panel-body">
+          <div class="filters">
+            <div><label>С даты</label><input id="payrollFrom" type="date"></div>
+            <div><label>По дату</label><input id="payrollTo" type="date"></div>
+            <div><label>Быстрый поиск сотрудника</label><input id="payrollSearch" placeholder="Начните вводить фамилию"></div>
+            <div><label>Сотрудник</label><select id="payrollPerson"></select></div>
+            <div><label>Поиск объекта</label><input id="payrollProjectSearch" placeholder="Начните вводить объект"><select id="payrollProject" style="margin-top:5px"></select></div>
+          </div>
+          <div class="panel" style="box-shadow:none;margin-bottom:14px">
+            <div class="panel-head"><h2>Часы за месяц</h2></div>
+            <div class="panel-body">
+              <div class="form-grid">
+                <div><label>Сотрудник</label><select id="monthlyPerson"></select></div>
+                <div><label>Объект</label><select id="monthlyProject"></select></div>
+                <div><label>Месяц</label><input id="monthlyMonth" type="month"></div>
+                <div><label>Часы</label><input id="monthlyHours" type="number" min="0" step="0.25" placeholder="62.5"></div>
+                <div class="wide"><label>Комментарий</label><input id="monthlyNotes" placeholder="Например: внесено по месячному табелю"></div>
+                <div class="wide"><button class="primary" id="addMonthlyHoursBtn">Добавить часы за месяц</button></div>
+              </div>
+              <div style="height:12px"></div>
+              <div class="table-wrap"><table id="monthlyHoursTable"></table></div>
+            </div>
+          </div>
+          <div style="height:14px"></div>
+          <div class="table-wrap"><table id="payrollTable"></table></div>
+          <div class="footer-note">Расчет зарплаты берется из часов в табелях и часовой ставки сотрудника. Доход компании считается по тарифу объекта минус начисленная зарплата.</div>
+          <div class="report-actions">
+            <div><label>Карточка сотрудника для выплаты</label><select id="employeeReportPerson"></select></div>
+            <button id="oldPrintEmployeeReportBtn">Печать карточки</button>
+          </div>
+          <div class="payroll-report-title">Готовый расчёт</div>
+          <div class="report-box" id="employeeReportBox"></div>
+          <div class="mobile-payroll-breakdown" id="mobilePayrollBreakdown"></div>
+        </div>
+      </div>
+    </section>
+    <section id="settlements" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Выплаты сотрудникам</h2>
+          <div class="settlement-toolbar">
+            <div><label>Месяц</label><input id="settlementMonth" type="month"></div>
+            <div><label>Поиск сотрудника или объекта</label><input id="settlementSearch" placeholder="Введите фамилию или объект"></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="footer-note" style="margin:0 0 12px">После фактической выплаты нажмите «Отметить выплаченным». До этого сумма учитывается как долг перед сотрудником по соответствующему объекту.</div>
+          <div class="settlement-columns">
+            <div class="panel">
+              <div class="panel-head"><h2>Нужно выплатить</h2><span class="status sent" id="unsettledSummary"></span></div>
+              <div class="panel-body"><div class="settlement-groups" id="unsettledList"></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h2>Выплачено</h2><span class="status paid" id="settledSummary"></span></div>
+              <div class="panel-body"><div class="settlement-groups" id="settledList"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="inbox" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Входящие из Telegram</h2>
+          <div class="toolbar"><button id="inboxRefreshBtn" type="button">Обновить</button></div>
+        </div>
+        <div class="panel-body">
+          <div class="grid three" id="inboxMetrics"></div>
+          <div style="height:14px"></div>
+          <div class="table-wrap"><table id="inboxTable"></table></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div class="selection-sum-bar" id="selectionSumBar">Сумма: 0</div>
+  <script>
+    const STORAGE_KEY = 'tabel-zarplata-app-v1';
+    const LOCAL_BACKUP_KEY = `${STORAGE_KEY}-before-server`;
+    const UI_ZOOM_KEY = 'tabel-zarplata-ui-zoom-v1';
+    const UI_ZOOM_MIN = 0.75;
+    const UI_ZOOM_MAX = 1.5;
+    const UI_ZOOM_STEP = 0.05;
+    const CLOUD_API = `${location.origin}/api/state`;
+    const isCloudMode = location.protocol === 'http:' || location.protocol === 'https:';
+    const legalEntities = ['V&V', 'ZGROUP', 'HOLZPOL', 'HAMMER BAU', 'URUS', 'НЕ ОФОРМЛЕН'];
+    const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    const today = () => new Date().toISOString().slice(0, 10);
+    const money = (value, currency = '€') => `${Number(value || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ''}`.trim();
+    const num = value => Number(value || 0);
+    const byId = id => document.getElementById(id);
+    let stateLoadFailed = false;
+    let uiZoom = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, Number(localStorage.getItem(UI_ZOOM_KEY)) || 1));
+    let cloudReady = false;
+    let cloudSaveTimer = null;
+    let serverRevision = null;
+    let handlingCloudConflict = false;
+    let state = loadState();
+    let activeSheetId = state.timesheets[0]?.id || null;
+    let creatingSheet = false;
+    let newSheetPersonIds = new Set();
+    let editingPersonId = null;
+    let hourSelection = null;
+    let copiedHoursGrid = null;
+    let isSelectingHours = false;
+    let mobileWeekIndex = 0;
+    let tableSumSelection = null;
+    let isSelectingTableSum = false;
+
+    function applyUiZoom(value) {
+      uiZoom = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, Math.round(value * 100) / 100));
+      document.documentElement.style.zoom = String(uiZoom);
+      localStorage.setItem(UI_ZOOM_KEY, String(uiZoom));
+    }
+
+    applyUiZoom(uiZoom);
+
+    function defaultState() {
+      return {
+        people: [],
+        projects: [],
+        timesheets: [],
+        invoices: [],
+        monthlyHours: [],
+        settlements: [],
+        advances: [],
+        expenses: [],
+        telegram: { chats: [], inbox: [] }
+      };
+    }
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return normalizeState(raw ? JSON.parse(raw) : defaultState());
+      } catch {
+        stateLoadFailed = true;
+        return normalizeState(defaultState());
+      }
+    }
+    function localStateExists() {
+      try {
+        return !!localStorage.getItem(STORAGE_KEY);
+      } catch {
+        return false;
+      }
+    }
+    function readStoredState(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? normalizeState(JSON.parse(raw)) : null;
+      } catch {
+        return null;
+      }
+    }
+    function backupLocalState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) localStorage.setItem(LOCAL_BACKUP_KEY, raw);
+      } catch {}
+    }
+    function looksLikeDemoState(data) {
+      const projectNames = (data?.projects || []).map(project => project.name || '');
+      return projectNames.length > 0 && projectNames.every(name => name.startsWith('Пример:'));
+    }
+    function stateScore(data) {
+      if (!data) return 0;
+      const realProjects = (data.projects || []).filter(project => project.name && !project.name.startsWith('Пример:')).length;
+      const realPeople = (data.people || []).filter(person => person.name && !person.name.startsWith('Пример:')).length;
+      const sheets = (data.timesheets || []).length;
+      const invoices = (data.invoices || []).length;
+      const monthly = (data.monthlyHours || []).length;
+      const settlements = (data.settlements || []).length;
+      const hours = (data.timesheets || []).reduce((sum, sheet) => sum + (sheet.entries || []).reduce((rowSum, entry) => rowSum + (entry.hours || []).reduce((hourSum, hour) => hourSum + num(hour), 0), 0), 0);
+      return realProjects * 1000 + realPeople * 100 + sheets * 20 + invoices * 10 + monthly * 10 + settlements + hours / 100;
+    }
+    function bestLocalState() {
+      const current = readStoredState(STORAGE_KEY);
+      const backup = readStoredState(LOCAL_BACKUP_KEY);
+      return stateScore(backup) > stateScore(current) ? backup : current;
+    }
+    function normalizeState(data) {
+      data.people = Array.isArray(data.people) ? data.people : [];
+      data.people.forEach(person => {
+        if (!person.legalEntity) person.legalEntity = 'V&V';
+        if (!person.accountOwnerType) person.accountOwnerType = 'self';
+      });
+      data.projects = Array.isArray(data.projects) ? data.projects : [];
+      data.projects.forEach(project => {
+        if (typeof project.completed !== 'boolean') project.completed = false;
+      });
+      data.timesheets = Array.isArray(data.timesheets) ? data.timesheets : [];
+      data.timesheets.forEach(sheet => {
+        if (!sheet.month) sheet.month = (sheet.weekStart || today()).slice(0, 7);
+        if (!Array.isArray(sheet.photos)) sheet.photos = sheet.photo ? [sheet.photo] : [];
+      });
+      data.invoices = Array.isArray(data.invoices) ? data.invoices : [];
+      data.invoices.forEach(invoice => {
+        const invoiceMonth = (invoice.date || today()).slice(0, 7);
+        if (!invoice.periodFrom) invoice.periodFrom = monthStart(invoiceMonth);
+        if (!invoice.periodTo) invoice.periodTo = `${invoiceMonth}-${String(monthDayCount(invoiceMonth)).padStart(2, '0')}`;
+      });
+      data.monthlyHours = Array.isArray(data.monthlyHours) ? data.monthlyHours : [];
+      data.settlements = Array.isArray(data.settlements) ? data.settlements : [];
+      data.advances = Array.isArray(data.advances) ? data.advances : [];
+      data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
+      data.telegram = data.telegram && typeof data.telegram === 'object' ? data.telegram : {};
+      data.telegram.chats = Array.isArray(data.telegram.chats) ? data.telegram.chats : [];
+      data.telegram.inbox = Array.isArray(data.telegram.inbox) ? data.telegram.inbox : [];
+      return data;
+    }
+    function saveLocalState() {
+      if (stateLoadFailed) return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    function saveState() {
+      saveLocalState();
+      scheduleCloudSave();
+    }
+    function scheduleCloudSave() {
+      if (!isCloudMode || !cloudReady) return;
+      clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = setTimeout(saveCloudState, 350);
+    }
+    async function saveCloudState() {
+      if (!isCloudMode || !cloudReady) return false;
+      try {
+        const payload = JSON.parse(JSON.stringify(state));
+        payload._clientBaseRevision = serverRevision;
+        const response = await fetch(CLOUD_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          handleCloudConflict(result);
+          return false;
+        }
+        if (response.ok) {
+          serverRevision = result.revision || serverRevision;
+          if (result.savedAt) state._savedAt = result.savedAt;
+          if (result.revision) state._serverRevision = result.revision;
+        }
+        return response.ok;
+      } catch (error) {
+        console.warn('Не удалось сохранить данные на сервере', error);
+        return false;
+      }
+    }
+    function handleCloudConflict(result = {}) {
+      if (handlingCloudConflict) return;
+      handlingCloudConflict = true;
+      clearTimeout(cloudSaveTimer);
+      backupLocalState();
+      if (result.current) {
+        state = normalizeState(result.current);
+        serverRevision = result.current._serverRevision || result.revision || serverRevision;
+        activeSheetId = getSheet(activeSheetId) ? activeSheetId : state.timesheets[0]?.id || null;
+        saveLocalState();
+        render({ skipSave: true });
+      }
+      handlingCloudConflict = false;
+      alert('Данные на сервере были новее. Программа обновила актуальную базу и не дала старой вкладке перезаписать часы.');
+    }
+    async function pushLocalStateToCloud() {
+      const localCandidate = bestLocalState();
+      if (!localCandidate) return alert('В этом браузере не найдена локальная база для переноса.');
+      if (stateScore(localCandidate) < stateScore(state) && !confirm('На сервере сейчас данных больше, чем в локальной копии. Все равно заменить сервер локальной копией?')) return;
+      state = normalizeState(localCandidate);
+      activeSheetId = state.timesheets[0]?.id || null;
+      stateLoadFailed = false;
+      cloudReady = true;
+      const ok = await saveCloudState();
+      saveLocalState();
+      render();
+      alert(ok ? 'Данные перенесены на сервер. Теперь обновите страницу на телефоне.' : 'Не удалось отправить данные на сервер.');
+    }
+    async function loadCloudState() {
+      if (!isCloudMode) return false;
+      try {
+        const response = await fetch(CLOUD_API, { cache: 'no-store' });
+        if (!response.ok) throw new Error('server unavailable');
+        const payload = await response.json();
+        serverRevision = payload.revision || payload.state?._serverRevision || null;
+        const localCandidate = bestLocalState();
+        if (payload.empty && localCandidate) {
+          state = normalizeState(localCandidate);
+          activeSheetId = state.timesheets[0]?.id || null;
+          cloudReady = true;
+          await saveCloudState();
+          return true;
+        }
+        if (payload.state) {
+          const serverScore = stateScore(payload.state);
+          const localScore = stateScore(localCandidate);
+          if (localCandidate && localScore > serverScore) {
+            backupLocalState();
+            console.warn('Локальная копия выглядит больше серверной. Серверные данные оставлены главными, локальная копия сохранена как резерв.');
+          }
+          backupLocalState();
+          state = normalizeState(payload.state);
+          activeSheetId = state.timesheets[0]?.id || null;
+          serverRevision = payload.revision || state._serverRevision || serverRevision;
+          stateLoadFailed = false;
+          cloudReady = true;
+          saveLocalState();
+          return true;
+        }
+        cloudReady = true;
+        return true;
+      } catch (error) {
+        console.warn('Серверное хранилище недоступно, используется локальный режим', error);
+        return false;
+      }
+    }
+    function getPerson(id) { return state.people.find(item => item.id === id); }
+    function getProject(id) { return state.projects.find(item => item.id === id); }
+    function getSheet(id) { return state.timesheets.find(item => item.id === id); }
+    function sheetMonth(sheet) { return sheet?.month || (sheet?.weekStart || today()).slice(0, 7); }
+    function monthStart(month) { return `${month || today().slice(0, 7)}-01`; }
+    function monthDayCount(month) {
+      const [year, monthNumber] = (month || today().slice(0, 7)).split('-').map(Number);
+      return new Date(year, monthNumber, 0).getDate();
+    }
+    function monthDayLabels(month) {
+      return Array.from({ length: monthDayCount(month) }, (_, index) => String(index + 1));
+    }
+    function isWeekendDay(month, dayIndex) {
+      const date = new Date(`${monthStart(month).slice(0, 8)}${String(dayIndex + 1).padStart(2, '0')}T00:00:00`);
+      return [0, 6].includes(date.getDay());
+    }
+    function monthDisplay(month) {
+      return monthName(monthStart(month));
+    }
+    function weekEnd(weekStart) {
+      const date = new Date(`${weekStart}T00:00:00`);
+      date.setDate(date.getDate() + 6);
+      return date.toISOString().slice(0, 10);
+    }
+    function inRange(date, from, to) {
+      if (!date) return true;
+      if (from && date < from) return false;
+      if (to && date > to) return false;
+      return true;
+    }
+    function sheetTotals(sheet) {
+      const project = getProject(sheet.projectId);
+      const rows = sheet.entries.map(entry => {
+        const person = getPerson(entry.personId);
+        const hours = entry.hours.reduce((sum, h) => sum + num(h), 0);
+        const payroll = hours * num(person?.rate);
+        const revenue = hours * num(project?.billRate);
+        return { person, hours, payroll, revenue, profit: revenue - payroll };
+      });
+      return rows.reduce((acc, row) => {
+        acc.hours += row.hours;
+        acc.payroll += row.payroll;
+        acc.revenue += row.revenue;
+        acc.profit += row.profit;
+        return acc;
+      }, { rows, hours: 0, payroll: 0, revenue: 0, profit: 0 });
+    }
+    function projectStats(projectId, filter = {}) {
+      const base = state.timesheets.filter(sheet => {
+        if (sheet.projectId !== projectId) return false;
+        if (filter.month && sheetMonth(sheet) !== filter.month) return false;
+        return true;
+      }).reduce((acc, sheet) => {
+        const totals = sheetTotals(sheet);
+        acc.hours += totals.hours;
+        acc.payroll += totals.payroll;
+        acc.revenue += totals.revenue;
+        acc.profit += totals.profit;
+        return acc;
+      }, { hours: 0, payroll: 0, revenue: 0, profit: 0 });
+      state.monthlyHours.filter(item => {
+        if (item.projectId !== projectId) return false;
+        if (filter.month && item.month !== filter.month) return false;
+        return true;
+      }).forEach(item => {
+        const person = getPerson(item.personId);
+        const project = getProject(item.projectId);
+        const hours = num(item.hours);
+        const payroll = hours * num(person?.rate);
+        const revenue = hours * num(project?.billRate);
+        base.hours += hours;
+        base.payroll += payroll;
+        base.revenue += revenue;
+        base.profit += revenue - payroll;
+      });
+      const invoices = state.invoices.filter(invoice => {
+        if (invoice.projectId !== projectId) return false;
+        if (!filter.month) return true;
+        const from = invoice.periodFrom || invoice.date || monthStart(filter.month);
+        const to = invoice.periodTo || invoice.date || `${filter.month}-${String(monthDayCount(filter.month)).padStart(2, '0')}`;
+        return from <= `${filter.month}-${String(monthDayCount(filter.month)).padStart(2, '0')}` && to >= monthStart(filter.month);
+      });
+      base.invoiced = invoices.reduce((sum, invoice) => sum + num(invoice.amount), 0);
+      base.paid = invoices.filter(invoice => invoice.status === 'paid').reduce((sum, invoice) => sum + num(invoice.amount), 0);
+      base.unpaid = base.invoiced - base.paid;
+      return base;
+    }
+    function render(options = {}) {
+      if (!options.skipSave) saveState();
+      renderSelects();
+      renderDashboard();
+      renderPeople();
+      renderProjects();
+      renderObjectDays();
+      renderInvoices();
+      renderSheets();
+      renderHours();
+      renderPayroll();
+      renderMonthlyHours();
+      renderEmployeeReport();
+      renderSettlements();
+      renderInbox();
+    }
+    function renderSelects() {
+      const selectedValues = {};
+      ['dashboardProject', 'payrollProject', 'printReportProject', 'payrollPerson', 'printReportPerson', 'employeeReportPerson', 'monthlyPerson', 'monthlyProject', 'sheetProject', 'invoiceProject'].forEach(id => {
+        selectedValues[id] = byId(id)?.value || '';
+      });
+      const projectOptions = projectsAlphabetically().map(project => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join('');
+      byId('dashboardProject').innerHTML = '<option value="">Все объекты</option>' + projectOptions;
+      ['sheetProject', 'invoiceProject', 'monthlyProject'].forEach(id => byId(id).innerHTML = projectOptions || '<option value="">Нет объектов</option>');
+      byId('payrollProject').innerHTML = '<option value="">Все объекты</option>' + projectOptions;
+      byId('printReportProject').innerHTML = '<option value="">Все объекты</option>' + projectOptions;
+      const personOptions = state.people.map(person => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join('');
+      const payrollPersonOptions = peopleAlphabetically().map(person => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join('');
+      byId('payrollPerson').innerHTML = '<option value="">Все сотрудники</option>' + payrollPersonOptions;
+      byId('employeeReportPerson').innerHTML = payrollPersonOptions;
+      byId('printReportPerson').innerHTML = '<option value="">По объекту</option>' + payrollPersonOptions;
+      byId('monthlyPerson').innerHTML = personOptions || '<option value="">Нет сотрудников</option>';
+      byId('personLegalEntity').innerHTML = legalEntities.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+      Object.entries(selectedValues).forEach(([id, value]) => {
+        if (value && [...(byId(id)?.options || [])].some(option => option.value === value)) byId(id).value = value;
+      });
+    }
+    function peopleAlphabetically() {
+      return [...state.people].sort((a, b) =>
+        String(a.name || '').localeCompare(String(b.name || ''), 'ru', { sensitivity: 'base' })
+      );
+    }
+    function projectsAlphabetically() {
+      return [...state.projects].sort((a, b) =>
+        String(a.name || '').localeCompare(String(b.name || ''), 'ru', { sensitivity: 'base' })
+      );
+    }
+    function selectBySearch(searchId, selectId, items, labelGetter) {
+      const query = byId(searchId).value.trim().toLocaleLowerCase('ru-RU');
+      if (!query) return;
+      const match = items.find(item => labelGetter(item).toLocaleLowerCase('ru-RU').startsWith(query)) ||
+        items.find(item => labelGetter(item).toLocaleLowerCase('ru-RU').includes(query));
+      if (match) {
+        byId(selectId).value = match.id;
+        byId(selectId).dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    function renderDashboard() {
+      const month = byId('dashboardMonth')?.value || '';
+      const projectId = byId('dashboardProject')?.value || '';
+      const projects = projectsAlphabetically().filter(project => !projectId || project.id === projectId);
+      const filter = { month };
+      byId('projectProfitTable').innerHTML = table(['Объект', 'Часы', 'Зарплата'], projects.map(project => {
+        const stats = projectStats(project.id, filter);
+        return [escapeHtml(project.name), stats.hours.toFixed(2), money(stats.payroll, project.currency)];
+      }), 'Пока нет объектов');
+      const dashboardSheets = state.timesheets.filter(sheet => {
+        if (projectId && sheet.projectId !== projectId) return false;
+        if (month && sheetMonth(sheet) !== month) return false;
+        return true;
+      }).sort((a, b) => {
+        const projectA = getProject(a.projectId)?.name || '';
+        const projectB = getProject(b.projectId)?.name || '';
+        return projectA.localeCompare(projectB, 'ru') || sheetMonth(b).localeCompare(sheetMonth(a));
+      });
+      byId('invoiceSummaryTable').innerHTML = table(['Объект', 'Месяц', 'Сотрудники', 'Часы', ''], dashboardSheets.map(sheet => {
+        const project = getProject(sheet.projectId);
+        const names = sheetEmployeeNames(sheet);
+        const totals = sheetTotals(sheet);
+        return [
+          `<strong>${escapeHtml(project?.name || 'Без объекта')}</strong>`,
+          monthDisplay(sheetMonth(sheet)),
+          `<div style="white-space:normal;line-height:1.45">${names.map(escapeHtml).join('<br>') || 'Нет сотрудников'}</div>`,
+          `<strong>${totals.hours.toFixed(2)}</strong>`,
+          `<button class="primary" type="button" onclick="openSheetForEditing('${sheet.id}')">Открыть</button>`
+        ];
+      }), 'Табелей пока нет');
+    }
+    function metric(name, value, hint) {
+      return `<div class="metric"><div class="name">${name}</div><div class="value">${value}</div><div class="hint">${hint}</div></div>`;
+    }
+    function renderPeople() {
+      const filter = (byId('peopleFilter')?.value || '').trim().toLowerCase();
+      const filteredPeople = state.people.filter(person => {
+        const lastProject = lastProjectForPerson(person.id);
+        return !filter || [person.name, person.legalEntity, person.bankAccount, accountOwnerName(person), lastProject].join(' ').toLowerCase().includes(filter);
+      });
+      byId('peopleTable').innerHTML = table(['Имя', 'Юр. лицо', 'Последний объект', 'Ставка', 'Счет', 'Владелец', 'Часы', 'Начислено', ''], filteredPeople.map(person => {
+        const totals = payrollRows().filter(row => row.personId === person.id).reduce((acc, row) => {
+          acc.hours += row.hours;
+          acc.payroll += row.payroll;
+          return acc;
+        }, { hours: 0, payroll: 0 });
+        const lastProject = lastProjectForPerson(person.id);
+        return [
+          `<input class="inline-input name" data-person-field="name" data-person-id="${person.id}" value="${escapeHtml(person.name)}">`,
+          `<select class="inline-input" data-person-field="legalEntity" data-person-id="${person.id}">${legalEntities.map(entity => `<option value="${escapeHtml(entity)}" ${entity === person.legalEntity ? 'selected' : ''}>${escapeHtml(entity)}</option>`).join('')}</select>`,
+          escapeHtml(lastProject || 'Нет часов'),
+          `<input class="inline-input" type="number" step="0.01" data-person-field="rate" data-person-id="${person.id}" value="${num(person.rate)}">`,
+          `<input class="inline-input account" data-person-field="bankAccount" data-person-id="${person.id}" value="${escapeHtml(person.bankAccount || '')}">`,
+          `<input class="inline-input" data-person-field="accountOwnerName" data-person-id="${person.id}" value="${escapeHtml(person.accountOwnerName || '')}" placeholder="если не сотрудник">`,
+          totals.hours.toFixed(2),
+          money(totals.payroll, person.currency),
+          `<div class="row-actions"><button data-save-person-id="${person.id}">Сохранить</button><button class="icon" title="Удалить" onclick="deletePerson('${person.id}')">×</button></div>`
+        ];
+      }), 'Добавьте первого сотрудника');
+    }
+    function lastProjectForPerson(personId) {
+      const records = [];
+      state.timesheets.forEach(sheet => {
+        const entry = sheet.entries.find(item => item.personId === personId);
+        const hours = entry?.hours?.reduce((sum, value) => sum + num(value), 0) || 0;
+        if (hours > 0) records.push({ date: monthStart(sheetMonth(sheet)), project: getProject(sheet.projectId)?.name || '' });
+      });
+      state.monthlyHours.forEach(item => {
+        if (item.personId === personId && num(item.hours) > 0) records.push({ date: monthDateFromInput(item.month), project: getProject(item.projectId)?.name || '' });
+      });
+      return records.sort((a, b) => b.date.localeCompare(a.date))[0]?.project || '';
+    }
+    function renderProjects() {
+      byId('projectsTable').innerHTML = table(['Объект', 'Статус', 'Тариф', 'Доход', 'Прибыль', 'Долг', ''], state.projects.map(project => {
+        const stats = projectStats(project.id);
+        return [
+          `<strong>${escapeHtml(project.name)}</strong><div class="small muted">${escapeHtml(project.client || '')}</div>`,
+          project.completed ? '<span class="status paid">Завершён</span>' : '<span class="status sent">Активен</span>',
+          `<div style="display:flex;gap:5px;align-items:center"><input class="inline-input" style="width:78px" type="number" min="0" step="0.01" data-project-rate="${project.id}" value="${num(project.billRate)}"><span>${escapeHtml(project.currency || '€')}</span></div>`,
+          money(stats.revenue, project.currency),
+          `<span class="${stats.profit >= 0 ? 'positive' : 'negative'}">${money(stats.profit, project.currency)}</span>`,
+          money(stats.unpaid, project.currency),
+          `<div class="row-actions"><button data-save-project-rate="${project.id}">Сохранить тариф</button><button type="button" onclick="toggleProjectCompleted('${project.id}')">${project.completed ? 'Вернуть в активные' : 'Завершить объект'}</button><button class="icon" title="Удалить" onclick="deleteProject('${project.id}')">×</button></div>`
+        ];
+      }), 'Добавьте первый объект');
+    }
+    function saveProjectRate(projectId) {
+      const project = getProject(projectId);
+      const input = document.querySelector(`[data-project-rate="${projectId}"]`);
+      if (!project || !input) return;
+      project.billRate = num(input.value);
+      saveState();
+      render();
+    }
+    function toggleProjectCompleted(projectId) {
+      const project = getProject(projectId);
+      if (!project) return;
+      project.completed = !project.completed;
+      saveState();
+      render();
+    }
+    function renderObjectDays() {
+      const month = byId('objectDaysMonth')?.value || today().slice(0, 7);
+      const dayLabels = monthDayLabels(month);
+      const weekRanges = monthWeekRanges(month);
+      const allDayTotals = Array(monthDayCount(month)).fill(0);
+      const allWeekTotals = Array(weekRanges.length).fill(0);
+      const rows = state.projects.filter(project => !project.completed).map(project => {
+        const dayHours = Array(monthDayCount(month)).fill(0);
+        state.timesheets.filter(sheet => sheet.projectId === project.id && sheetMonth(sheet) === month).forEach(sheet => {
+          sheet.entries.forEach(entry => entry.hours.forEach((hours, index) => dayHours[index] += num(hours)));
+        });
+        dayHours.forEach((hours, index) => allDayTotals[index] += hours);
+        const dayCells = dayHours.map((hours, index) => {
+          const date = `${month}-${String(index + 1).padStart(2, '0')}`;
+          const invoiceState = projectInvoiceState(project.id, date);
+          return `<td class="num object-hours-cell ${isWeekendDay(month, index) ? 'weekend-cell' : ''} ${hours ? invoiceState : ''}">${hours ? trimNumber(hours, 2, true) : ''}</td>`;
+        }).join('');
+        const weekTotals = weekRanges.map(({ start, end }, weekIndex) => {
+          const total = dayHours.slice(start, end + 1).reduce((sum, hours) => sum + hours, 0);
+          allWeekTotals[weekIndex] += total;
+          return total;
+        });
+        const weekCells = weekTotals.map(hours => `<td class="num object-week-cell">${hours ? trimNumber(hours, 2, true) : ''}</td>`).join('');
+        const total = dayHours.reduce((sum, hours) => sum + hours, 0);
+        return [`<strong>${escapeHtml(project.name)}</strong>`, dayCells, weekCells, total.toFixed(2), weekTotals];
+      });
+      const grandTotal = allDayTotals.reduce((sum, hours) => sum + hours, 0);
+      const colgroup = `<colgroup><col class="object-col">${dayLabels.map(() => '<col class="object-day-col">').join('')}${weekRanges.map(() => '<col class="object-week-col">').join('')}<col class="object-total-col"></colgroup>`;
+      const weekHeaders = weekRanges.map(range => `<th class="num object-week-cell" title="${range.label}">${range.weekNumber} нед.</th>`).join('');
+      const dayWeekBands = weekRanges.map(range => `<th colspan="${range.end - range.start + 1}" title="${range.fullStart} — ${range.fullEnd}">${range.label}</th>`).join('');
+      const footer = `<tfoot><tr><td>Итого</td>${allDayTotals.map((hours, index) => `<td class="num ${isWeekendDay(month, index) ? 'weekend-cell' : ''}">${hours ? trimNumber(hours, 2, true) : ''}</td>`).join('')}${allWeekTotals.map(hours => `<td class="num object-week-cell">${hours ? trimNumber(hours, 2, true) : ''}</td>`).join('')}<td class="num object-total-cell">${grandTotal.toFixed(2)}</td></tr></tfoot>`;
+      byId('objectDaysTable').innerHTML = `${colgroup}<thead><tr class="week-label-row"><th rowspan="2">Объект</th>${dayWeekBands}<th colspan="${weekRanges.length}">Итоги по неделям</th><th rowspan="2" class="num">Итого</th></tr><tr class="day-label-row">${dayLabels.map((day, index) => `<th class="num ${isWeekendDay(month, index) ? 'weekend-cell' : ''}">${day}</th>`).join('')}${weekHeaders}</tr></thead><tbody>${rows.map(row => `<tr><td>${row[0]}</td>${row[1]}${row[2]}<td class="num object-total-cell">${row[3]}</td></tr>`).join('') || `<tr><td colspan="${dayLabels.length + weekRanges.length + 2}"><div class="empty">Нет объектов</div></td></tr>`}</tbody>${footer}`;
+      const weeklyHeaders = weekRanges.map(range => range.label);
+      byId('objectWeeksTable').innerHTML = table(['Объект', ...weeklyHeaders, 'Итого за месяц'], rows.map(row => {
+        return [row[0], ...row[4].map(hours => hours ? trimNumber(hours, 2, true) : ''), row[3]];
+      }), 'Нет часов по объектам за выбранный месяц');
+    }
+    function monthWeekRanges(month) {
+      const dayCount = monthDayCount(month);
+      const ranges = [];
+      let start = 0;
+      for (let index = 0; index < dayCount; index++) {
+        const date = new Date(`${monthStart(month).slice(0, 8)}${String(index + 1).padStart(2, '0')}T00:00:00`);
+        if (date.getDay() === 0 || index === dayCount - 1) {
+          const rangeDate = new Date(`${monthStart(month).slice(0, 8)}${String(start + 1).padStart(2, '0')}T00:00:00`);
+          const monday = new Date(rangeDate);
+          monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+          const sunday = new Date(monday);
+          sunday.setDate(sunday.getDate() + 6);
+          const weekNumber = isoWeekNumber(monday);
+          ranges.push({ start, end: index, weekNumber, fullStart: localDateText(monday), fullEnd: localDateText(sunday), label: `${weekNumber} неделя · ${shortDate(monday)}–${shortDate(sunday)}` });
+          start = index + 1;
+        }
+      }
+      return ranges;
+    }
+    function isoWeekNumber(date) {
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const day = utcDate.getUTCDay() || 7;
+      utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day);
+      const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+      return Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+    }
+    function shortDate(date) {
+      return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+    function localDateText(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    function isMobileLayout() {
+      return window.matchMedia('(max-width: 700px)').matches;
+    }
+    function visibleTimesheetRange(month) {
+      const ranges = monthWeekRanges(month);
+      if (!isMobileLayout()) return { start: 0, end: monthDayCount(month) - 1, ranges };
+      mobileWeekIndex = Math.max(0, Math.min(mobileWeekIndex, ranges.length - 1));
+      return { ...ranges[mobileWeekIndex], ranges };
+    }
+    function preferredMobileWeekIndex(month) {
+      const ranges = monthWeekRanges(month);
+      const currentMonth = today().slice(0, 7);
+      if (month !== currentMonth) return 0;
+      const dayIndex = Number(today().slice(8, 10)) - 1;
+      return Math.max(0, ranges.findIndex(range => dayIndex >= range.start && dayIndex <= range.end));
+    }
+    function changeMobileWeek(direction) {
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) return;
+      const ranges = monthWeekRanges(sheetMonth(sheet));
+      mobileWeekIndex = Math.max(0, Math.min(mobileWeekIndex + direction, ranges.length - 1));
+      renderHours();
+    }
+    function projectInvoiceState(projectId, date) {
+      const invoices = state.invoices.filter(invoice => invoice.projectId === projectId && ['sent', 'paid'].includes(invoice.status) && invoice.periodFrom <= date && invoice.periodTo >= date);
+      if (invoices.some(invoice => invoice.status === 'paid')) return 'invoice-paid-cell';
+      if (invoices.length) return 'invoice-sent-cell';
+      return '';
+    }
+    function renderInvoices() {
+      byId('invoicesTable').innerHTML = table(['Счет', 'Объект', 'Период работ', 'Дата счета', 'Срок оплаты', 'Сумма', 'Статус', ''], state.invoices.map(invoice => {
+        const project = getProject(invoice.projectId);
+        return [`<strong>${escapeHtml(invoice.number || 'Без номера')}</strong><div class="small muted">${escapeHtml(invoice.notes || '')}</div>`, escapeHtml(project?.name || ''), `${invoice.periodFrom || ''} — ${invoice.periodTo || ''}`, invoice.date || '', invoice.dueDate || '', money(invoice.amount, project?.currency), statusBadge(invoice), `<div class="row-actions"><button title="Отметить оплаченным" onclick="markInvoicePaid('${invoice.id}')">Оплачен</button><button class="icon" title="Удалить" onclick="deleteInvoice('${invoice.id}')">×</button></div>`];
+      }), 'Счета еще не добавлены');
+    }
+    function renderSheets() {
+      let sheet = getSheet(activeSheetId);
+      if (!sheet && state.timesheets.length && !creatingSheet) {
+        activeSheetId = [...state.timesheets].sort((a, b) => sheetMonth(b).localeCompare(sheetMonth(a)))[0].id;
+        sheet = getSheet(activeSheetId);
+      }
+      if (sheet) {
+        byId('sheetModeBanner').className = 'sheet-mode-banner editing';
+        byId('sheetModeBanner').textContent = `Редактирование: ${getProject(sheet.projectId)?.name || 'объект'} — ${monthDisplay(sheetMonth(sheet))}`;
+        byId('saveSheetMetaBtn').textContent = 'Обновить выбранный табель';
+        byId('sheetProject').value = sheet.projectId;
+        byId('sheetWeek').value = sheetMonth(sheet);
+        byId('sheetNotes').value = sheet.notes || '';
+        byId('photoPreview').innerHTML = renderPhotoPreview(sheet);
+      } else if (creatingSheet) {
+        byId('sheetModeBanner').className = 'sheet-mode-banner';
+        byId('sheetModeBanner').textContent = 'Создание нового табеля. Существующие табели не изменяются.';
+        byId('saveSheetMetaBtn').textContent = 'Создать новый табель';
+        byId('sheetWeek').value = byId('sheetWeek').value || today().slice(0, 7);
+        byId('sheetNotes').value = '';
+        byId('photoPreview').textContent = 'Фото можно добавить после создания табеля';
+      } else {
+        byId('sheetModeBanner').className = 'sheet-mode-banner';
+        byId('sheetModeBanner').textContent = 'Создайте первый табель';
+        byId('saveSheetMetaBtn').textContent = 'Создать новый табель';
+        byId('photoPreview').textContent = 'Создайте табель, чтобы добавить фото';
+      }
+      byId('deleteSheetBtn').disabled = !sheet;
+      byId('copyPrevWeekBtn').disabled = !sheet;
+      byId('saveTimesheetBtn').disabled = !sheet;
+      byId('exportCurrentSheetBtn').disabled = !sheet;
+      byId('newSheetBtn').disabled = creatingSheet;
+      byId('cancelNewSheetBtn').hidden = !creatingSheet;
+      renderSheetPeopleList(sheet);
+      renderSheetList();
+    }
+    function renderSheetList() {
+      const grouped = new Map();
+      state.timesheets.forEach(sheet => {
+        const project = getProject(sheet.projectId);
+        const projectName = project?.name || 'Без объекта';
+        if (!grouped.has(projectName)) grouped.set(projectName, new Map());
+        const months = grouped.get(projectName);
+        const month = sheetMonth(sheet);
+        if (!months.has(month)) months.set(month, []);
+        months.get(month).push(sheet);
+      });
+      byId('sheetList').innerHTML = [...grouped.entries()]
+        .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+        .map(([projectName, months]) => `<div class="sheet-group">
+          <div class="sheet-group-title">${escapeHtml(projectName)}</div>
+          ${[...months.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, sheets]) => `
+            <div class="sheet-month-title">${monthDisplay(month)}</div>
+            ${sheets.map(item => {
+              const totals = sheetTotals(item);
+              const names = sheetEmployeeNames(item);
+              return `<button class="list-item ${item.id === activeSheetId ? 'active' : ''}" onclick="selectSheet('${item.id}')"><span class="list-line"><strong>${names.length} сотрудников</strong><span>${totals.hours.toFixed(2)} ч</span></span><span class="small muted">${escapeHtml(names.slice(0, 3).join(', '))}${names.length > 3 ? ` +${names.length - 3}` : ''}</span></button>`;
+            }).join('')}`).join('')}
+        </div>`).join('') || '<div class="empty">Табелей пока нет</div>';
+    }
+    function sheetEmployeeNames(sheet) {
+      return (sheet?.entries || []).map(entry => getPerson(entry.personId)?.name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+    }
+    function refreshDependentViews() {
+      renderDashboard();
+      renderPeople();
+      renderObjectDays();
+      renderPayroll();
+      renderEmployeeReport();
+      renderSheetList();
+    }
+    function renderSheetPeopleList(sheet) {
+      const selected = new Set(sheet ? sheet.entries.map(entry => entry.personId) : (creatingSheet ? newSheetPersonIds : []));
+      const search = (byId('sheetPeopleSearch')?.value || '').trim().toLowerCase();
+      byId('sheetPeopleList').innerHTML = state.people.map(person => {
+        const name = person.name || '';
+        const match = !search || name.toLowerCase().includes(search);
+        const safeName = escapeHtml(name);
+        const label = search && match ? safeName.replace(new RegExp(escapeRegExp(search), 'ig'), value => `<span class="employee-match">${value}</span>`) : safeName;
+        return `<label class="check-row" style="${match ? '' : 'display:none'}"><input type="checkbox" class="sheet-person-check" value="${person.id}" ${selected.has(person.id) ? 'checked' : ''}> ${label}</label>`;
+      }).join('') || '<div class="empty">Сначала добавьте сотрудников</div>';
+    }
+    function escapeRegExp(value) {
+      return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    function selectedSheetPersonIds() {
+      return [...document.querySelectorAll('.sheet-person-check:checked')].map(input => input.value);
+    }
+    function buildSheetEntries(personIds, month) {
+      return personIds.map(personId => ({ personId, hours: Array(monthDayCount(month)).fill(0) }));
+    }
+    function latestSheetForProject(projectId) {
+      return [...state.timesheets]
+        .filter(sheet => sheet.projectId === projectId)
+        .sort((a, b) => sheetMonth(b).localeCompare(sheetMonth(a)))[0] || null;
+    }
+    function usePreviousSheetPeople(projectId) {
+      const previous = latestSheetForProject(projectId);
+      newSheetPersonIds = new Set(previous?.entries.map(entry => entry.personId) || []);
+      byId('sheetPeopleHint').textContent = previous
+        ? `Сотрудники подставлены из табеля за ${monthDisplay(sheetMonth(previous))}: ${newSheetPersonIds.size}.`
+        : 'По этому объекту еще нет предыдущего табеля. Выберите сотрудников.';
+    }
+    function updateSheetPeopleEntries(sheet, personIds) {
+      const dayCount = monthDayCount(sheetMonth(sheet));
+      const existing = new Map(sheet.entries.map(entry => [entry.personId, entry]));
+      sheet.entries = personIds.map(personId => {
+        const entry = existing.get(personId);
+        return entry ? { personId, hours: Array.from({ length: dayCount }, (_, index) => num(entry.hours?.[index])) } : { personId, hours: Array(dayCount).fill(0) };
+      });
+    }
+    function applySheetPeopleSelection() {
+      const sheet = getSheet(activeSheetId);
+      const personIds = selectedSheetPersonIds();
+      if (creatingSheet) {
+        newSheetPersonIds = new Set(personIds);
+        byId('sheetPeopleHint').textContent = personIds.length ? `Для нового табеля выбрано сотрудников: ${personIds.length}.` : 'Выберите сотрудников для нового табеля.';
+        return;
+      }
+      if (!sheet) return;
+      if (!personIds.length) {
+        byId('sheetPeopleHint').textContent = 'В табеле должен быть хотя бы один сотрудник.';
+        return;
+      }
+      updateSheetPeopleEntries(sheet, personIds);
+      saveState();
+      byId('sheetPeopleHint').textContent = `В табеле сотрудников: ${personIds.length}.`;
+      renderHours();
+      refreshDependentViews();
+    }
+    function renderPhotoPreview(sheet) {
+      const photos = sheet.photos || (sheet.photo ? [sheet.photo] : []);
+      if (!photos.length) return 'Фото табеля появится здесь';
+      return `<div class="photo-grid">${photos.map((photo, index) => `<div class="photo-card"><img src="${photo}" alt="Фото табеля ${index + 1}"><button data-photo-index="${index}">Удалить</button></div>`).join('')}</div>`;
+    }
+    function sheetDayTotals(sheet) {
+      const totals = Array(monthDayCount(sheetMonth(sheet))).fill(0);
+      sheet.entries.forEach(entry => {
+        totals.forEach((_, index) => {
+          totals[index] += num(entry.hours?.[index]);
+        });
+      });
+      return totals;
+    }
+    function weekTotalCells(sheet, dayTotals) {
+      const month = sheetMonth(sheet);
+      let weekTotal = 0;
+      return dayTotals.map((total, index) => {
+        weekTotal += total;
+        const date = new Date(`${monthStart(month).slice(0, 8)}${String(index + 1).padStart(2, '0')}T00:00:00`);
+        const isWeekEnd = date.getDay() === 0 || index === dayTotals.length - 1;
+        const value = isWeekEnd ? trimNumber(weekTotal, 2, true) : '';
+        if (isWeekEnd) weekTotal = 0;
+        return `<td class="num ${isWeekendDay(month, index) ? 'weekend-cell' : ''}">${value}</td>`;
+      }).join('');
+    }
+    function renderHoursFooter(sheet, project, visibleIndexes = null) {
+      const month = sheetMonth(sheet);
+      const allDayTotals = sheetDayTotals(sheet);
+      const indexes = visibleIndexes || allDayTotals.map((_, index) => index);
+      const dayTotals = indexes.map(index => allDayTotals[index]);
+      const totals = sheetTotals(sheet);
+      const dailyCells = dayTotals.map((total, position) => `<td class="num ${isWeekendDay(month, indexes[position]) ? 'weekend-cell' : ''}">${total ? trimNumber(total, 2, true) : ''}</td>`).join('');
+      const blankDayCells = indexes.map(index => `<td class="num ${isWeekendDay(month, index) ? 'weekend-cell' : ''}"></td>`).join('');
+      if (visibleIndexes && isMobileLayout()) {
+        const weekTotal = dayTotals.reduce((sum, value) => sum + value, 0);
+        return `<tfoot>
+          <tr class="totals-row day-total-row"><td>По дням</td>${dailyCells}</tr>
+          <tr class="week-total-row"><td>Неделя ${trimNumber(weekTotal, 2, true)} ч</td>${blankDayCells}</tr>
+          <tr class="month-total-row"><td>Месяц ${trimNumber(totals.hours, 2, true)} ч</td>${blankDayCells}</tr>
+        </tfoot>`;
+      }
+      const weekCells = visibleIndexes
+        ? indexes.map((_, position) => `<td class="num">${position === indexes.length - 1 ? trimNumber(dayTotals.reduce((sum, value) => sum + value, 0), 2, true) : ''}</td>`).join('')
+        : weekTotalCells(sheet, allDayTotals);
+      return `<tfoot>
+        <tr class="totals-row day-total-row"><td>Итого по дням</td>${dailyCells}<td class="num">${totals.hours.toFixed(2)}</td><td class="num">${money(totals.payroll)}</td></tr>
+        <tr class="week-total-row"><td>Итого по неделе</td>${weekCells}<td class="num">${totals.hours.toFixed(2)}</td><td class="num"></td></tr>
+        <tr class="month-total-row"><td>Итого месяц: ${escapeHtml(project?.name || 'объект')}</td>${blankDayCells}<td class="num">${totals.hours.toFixed(2)}</td><td class="num">${money(totals.payroll)}</td></tr>
+      </tfoot>`;
+    }
+    function refreshHoursFooter(sheet) {
+      const footer = byId('hoursTable').querySelector('tfoot');
+      if (!footer || !sheet) return;
+      const project = getProject(sheet.projectId);
+      const range = visibleTimesheetRange(sheetMonth(sheet));
+      const indexes = isMobileLayout() ? Array.from({ length: range.end - range.start + 1 }, (_, offset) => range.start + offset) : null;
+      footer.outerHTML = renderHoursFooter(sheet, project, indexes);
+    }
+    function renderHours() {
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) {
+        byId('activeSheetProject').value = '';
+        byId('activeSheetWeek').value = '';
+        byId('activeSheetHours').value = '';
+        byId('hoursTable').innerHTML = `<tbody><tr><td><div class="empty">${creatingSheet ? 'Выберите объект, месяц и сотрудников, затем нажмите «Создать новый табель». Часы станут доступны после создания.' : 'Создайте или выберите табель.'}</div></td></tr></tbody>`;
+        return;
+      }
+      syncSheetEntries(sheet);
+      const project = getProject(sheet.projectId);
+      const totals = sheetTotals(sheet);
+      byId('activeSheetProject').value = project?.name || '';
+      byId('activeSheetWeek').value = monthDisplay(sheetMonth(sheet));
+      byId('activeSheetHours').value = totals.hours.toFixed(2);
+      const month = sheetMonth(sheet);
+      const allDayLabels = monthDayLabels(month);
+      const visibleRange = visibleTimesheetRange(month);
+      const visibleIndexes = Array.from({ length: visibleRange.end - visibleRange.start + 1 }, (_, offset) => visibleRange.start + offset);
+      const dayLabels = visibleIndexes.map(index => allDayLabels[index]);
+      const mobile = isMobileLayout();
+      byId('mobileWeekLabel').textContent = mobile ? visibleRange.label : '';
+      byId('mobilePrevWeekBtn').disabled = mobileWeekIndex <= 0;
+      byId('mobileNextWeekBtn').disabled = mobileWeekIndex >= visibleRange.ranges.length - 1;
+      const rows = sheet.entries.map(entry => {
+        const person = getPerson(entry.personId);
+        const rowIndex = sheet.entries.indexOf(entry);
+        const hoursCells = visibleIndexes.map(index => {
+          const value = num(entry.hours[index]);
+          return `<td class="num ${isWeekendDay(month, index) ? 'weekend-cell' : ''}"><input class="hours-input ${value > 0 ? 'filled-cell' : ''}" type="number" min="0" step="0.25" value="${value}" data-sheet-id="${sheet.id}" data-person-id="${entry.personId}" data-row="${rowIndex}" data-col="${index}" oninput="updateHour('${sheet.id}','${entry.personId}',${index},this)"></td>`;
+        }).join('');
+        const rowHours = entry.hours.reduce((sum, h) => sum + num(h), 0);
+        const payroll = rowHours * num(person?.rate);
+        const mobileSummary = mobile ? ` · ${trimNumber(rowHours, 2, true)} ч` : '';
+        const resultCells = mobile ? '' : `<td class="num row-total-hours" data-row="${rowIndex}">${rowHours.toFixed(2)}</td><td class="num row-total-payroll" data-row="${rowIndex}">${money(payroll, person?.currency)}</td>`;
+        return `<tr><td title="${escapeHtml(person?.name || '')}"><strong class="person-name">${escapeHtml(person?.name || '')}</strong><span class="person-rate muted">${money(person?.rate, person?.currency)} / час${mobileSummary}</span></td>${hoursCells}${resultCells}</tr>`;
+      }).join('');
+      const colgroup = `<colgroup><col class="person-col">${dayLabels.map(() => '<col class="day-col">').join('')}${mobile ? '' : '<col class="total-col"><col class="total-col">'}</colgroup>`;
+      const weekBands = mobile
+        ? `<th colspan="${visibleIndexes.length}">${visibleRange.label}</th>`
+        : visibleRange.ranges.map(range => `<th colspan="${range.end - range.start + 1}" title="${range.fullStart} — ${range.fullEnd}">${range.label}</th>`).join('');
+      const resultHeaders = mobile ? '' : '<th rowspan="2" class="num">Итого</th><th rowspan="2" class="num">Зарплата</th>';
+      byId('hoursTable').innerHTML = `${colgroup}<thead><tr class="week-label-row"><th rowspan="2">Сотрудник</th>${weekBands}${resultHeaders}</tr><tr class="day-label-row">${dayLabels.map((d, position) => `<th class="num day-select-header ${isWeekendDay(month, visibleIndexes[position]) ? 'weekend-cell' : ''}" data-day-col="${visibleIndexes[position]}" title="Выделить день ${d}">${d}</th>`).join('')}</tr></thead><tbody>${rows}</tbody>${renderHoursFooter(sheet, project, mobile ? visibleIndexes : null)}`;
+      hourSelection = null;
+    }
+    function renderPayroll() {
+      const search = byId('payrollSearch').value.trim().toLowerCase();
+      const selectedPersonId = byId('payrollPerson').value;
+      if (selectedPersonId) byId('payrollProject').value = '';
+      const rawRows = payrollRows({ from: byId('payrollFrom').value, to: byId('payrollTo').value, personId: selectedPersonId, projectId: selectedPersonId ? '' : byId('payrollProject').value })
+        .filter(row => !search || row.personName.toLowerCase().includes(search));
+      const rows = selectedPersonId ? aggregatePayrollByProject(rawRows) : rawRows;
+      const totals = rows.reduce((acc, row) => {
+        acc.hours += row.hours;
+        acc.payroll += row.payroll;
+        acc.revenue += row.revenue;
+        acc.profit += row.profit;
+        return acc;
+      }, { hours: 0, payroll: 0, revenue: 0, profit: 0 });
+      byId('payrollMetrics').innerHTML = [metric('Часы', totals.hours.toFixed(2), 'По выбранному периоду'), metric('К выплате', money(totals.payroll), 'Сумма зарплат'), metric('Прибыль', money(totals.profit), 'Доход объекта минус зарплата')].join('');
+      byId('payrollTable').innerHTML = table(['Период', 'Сотрудник', 'Объект', 'Часы', 'Ставка', 'К выплате', 'Доход', 'Прибыль'], rows.map(row => [selectedPersonId ? 'Все записи' : periodLabel(row), escapeHtml(row.personName), escapeHtml(row.projectName), row.hours.toFixed(2), money(row.rate, row.currency), money(row.payroll, row.currency), money(row.revenue, row.projectCurrency), `<span class="${row.profit >= 0 ? 'positive' : 'negative'}">${money(row.profit, row.projectCurrency)}</span>`]), 'По выбранным фильтрам нет начислений');
+    }
+    function aggregatePayrollByProject(rows) {
+      const grouped = new Map();
+      rows.forEach(row => {
+        const key = row.projectId || row.projectName;
+        const current = grouped.get(key) || { ...row, hours: 0, payroll: 0, revenue: 0, profit: 0 };
+        current.hours += row.hours;
+        current.payroll += row.payroll;
+        current.revenue += row.revenue;
+        current.profit += row.profit;
+        grouped.set(key, current);
+      });
+      return [...grouped.values()].sort((a, b) => a.projectName.localeCompare(b.projectName, 'ru'));
+    }
+    function renderMonthlyHours() {
+      byId('monthlyHoursTable').innerHTML = table(['Месяц', 'Сотрудник', 'Объект', 'Часы', 'К выплате', 'Прибыль', 'Комментарий', ''], state.monthlyHours.map(item => {
+        const person = getPerson(item.personId);
+        const project = getProject(item.projectId);
+        const hours = num(item.hours);
+        const payroll = hours * num(person?.rate);
+        const revenue = hours * num(project?.billRate);
+        return [monthName(monthDateFromInput(item.month)), escapeHtml(person?.name || ''), escapeHtml(project?.name || ''), hours.toFixed(2), money(payroll, person?.currency), money(revenue - payroll, project?.currency), escapeHtml(item.notes || ''), `<div class="row-actions"><button class="icon" title="Удалить" onclick="deleteMonthlyHours('${item.id}')">×</button></div>`];
+      }), 'Месячные часы еще не добавлены');
+    }
+    function renderEmployeeReport() {
+      const box = byId('employeeReportBox');
+      if (!box) return;
+      box.textContent = printReportText();
+      const status = byId('copyPayrollStatus');
+      if (status) status.textContent = '';
+      renderMobilePayrollBreakdown();
+    }
+    function settlementKey(month, projectId, personId) {
+      return `${month}|${projectId}|${personId}`;
+    }
+    function nextMonth(date) {
+      const current = new Date(`${String(date).slice(0, 10)}T00:00:00`);
+      current.setMonth(current.getMonth() + 1);
+      return current.toISOString().slice(0, 7);
+    }
+    function advanceReceiptTotal(advanceId) {
+      return state.expenses
+        .filter(expense => expense.paymentSource === 'advance' && expense.advanceId === advanceId)
+        .reduce((sum, expense) => sum + num(expense.amount), 0);
+    }
+    function companyAdvanceBalance(advance) {
+      return Math.max(0, num(advance.amount) - advanceReceiptTotal(advance.id));
+    }
+    function advanceProjectId(advance) {
+      return advance.projectId || 'deductions';
+    }
+    function advanceProjectName(advance) {
+      return getProject(advance.projectId)?.name || 'Удержания из зарплаты';
+    }
+    function addAdvanceDeduction(grouped, month, advance) {
+      const person = getPerson(advance.personId);
+      if (!person) return;
+      const isCompany = advance.advanceType === 'company';
+      const reported = isCompany ? advanceReceiptTotal(advance.id) : 0;
+      const amount = isCompany ? companyAdvanceBalance(advance) : num(advance.amount);
+      if (!amount) return;
+      const projectId = advanceProjectId(advance);
+      const key = settlementKey(month, projectId, advance.personId);
+      const current = grouped.get(key) || {
+        key,
+        month,
+        projectId,
+        projectName: advanceProjectName(advance),
+        personId: advance.personId,
+        personName: person.name,
+        hours: 0,
+        payroll: 0,
+        currency: advance.currency || person.currency,
+        deductions: [],
+        advanceIds: []
+      };
+      current.advanceDeduction = num(current.advanceDeduction) + amount;
+      current.payroll -= amount;
+      current.advanceIds.push(advance.id);
+      current.deductions.push(isCompany
+        ? `Рабочие деньги: выдано ${formatAmount(advance.amount)}, чеков ${formatAmount(reported)}, удержание ${formatAmount(amount)}`
+        : `Личный аванс: удержание ${formatAmount(amount)}`);
+      grouped.set(key, current);
+    }
+    function settlementRows(month) {
+      const grouped = new Map();
+      payrollRows({
+        from: monthStart(month),
+        to: `${month}-${String(monthDayCount(month)).padStart(2, '0')}`
+      }).forEach(row => {
+        const key = settlementKey(month, row.projectId, row.personId);
+        const current = grouped.get(key) || {
+          key,
+          month,
+          projectId: row.projectId,
+          projectName: row.projectName || 'Без объекта',
+          personId: row.personId,
+          personName: row.personName,
+          hours: 0,
+          payroll: 0,
+          currency: row.currency
+        };
+        current.hours += row.hours;
+        current.payroll += row.payroll;
+        grouped.set(key, current);
+      });
+      state.expenses.filter(expense =>
+        expense.paymentSource === 'employee'
+        && expense.reimbursementMonth === month
+        && expense.status !== 'reimbursed'
+        && expense.personId
+      ).forEach(expense => {
+        const person = getPerson(expense.personId);
+        if (!person) return;
+        const key = settlementKey(month, expense.projectId || 'compensation', expense.personId);
+        const current = grouped.get(key) || {
+          key,
+          month,
+          projectId: expense.projectId || 'compensation',
+          projectName: getProject(expense.projectId)?.name || 'Компенсации',
+          personId: expense.personId,
+          personName: person.name,
+          hours: 0,
+          payroll: 0,
+          reimbursement: 0,
+          currency: expense.currency || person.currency
+        };
+        current.reimbursement = num(current.reimbursement) + num(expense.amount);
+        current.payroll += num(expense.amount);
+        grouped.set(key, current);
+      });
+      state.advances.filter(advance =>
+        advance.personId
+        && advance.deductionMonth === month
+      ).forEach(advance => addAdvanceDeduction(grouped, month, advance));
+      const settledKeys = new Set(state.settlements.map(item => settlementKey(item.month, item.projectId, item.personId)));
+      return [...grouped.values()].map(row => ({ ...row, settled: settledKeys.has(row.key) }))
+        .sort((a, b) => a.projectName.localeCompare(b.projectName, 'ru') || a.personName.localeCompare(b.personName, 'ru'));
+    }
+    function settlementDetailHtml(item) {
+      const parts = [];
+      if (item.hours) parts.push(`${formatHours(item.hours)} ч`);
+      if (item.reimbursement) parts.push(`Компенсация: ${formatAmount(item.reimbursement)} ${escapeHtml(currencyWord(item.currency))}`);
+      (item.deductions || []).forEach(detail => parts.push(escapeHtml(detail)));
+      return parts.join('<br>') || 'Без часов';
+    }
+    function settlementGroupsHtml(rows, settled) {
+      const groups = new Map();
+      rows.filter(row => row.settled === settled).forEach(row => {
+        if (!groups.has(row.projectId)) groups.set(row.projectId, []);
+        groups.get(row.projectId).push(row);
+      });
+      if (!groups.size) return `<div class="empty">${settled ? 'Выплат за выбранный месяц пока не отмечено' : 'Долга по зарплате нет или часов за месяц нет'}</div>`;
+      return [...groups.values()].map(items => {
+        const total = items.reduce((sum, item) => sum + item.payroll, 0);
+        const projectName = items[0].projectName;
+        return `<div class="settlement-project">
+          <div class="settlement-project-head"><strong>${escapeHtml(projectName)}</strong><span>${items.length} чел. · ${formatAmount(total)} ${escapeHtml(currencyWord(items[0].currency))}</span></div>
+          ${items.map(item => `<div class="settlement-person">
+            <strong>${escapeHtml(item.personName)}</strong>
+            <span class="hours">${settlementDetailHtml(item)}</span>
+            <span class="amount">${formatAmount(item.payroll)} ${escapeHtml(currencyWord(item.currency))}</span>
+            <button type="button" class="${settled ? '' : 'good'}" onclick="toggleSettlement('${item.month}','${item.projectId}','${item.personId}')">${settled ? 'Вернуть в долг' : item.payroll <= 0 && item.advanceDeduction ? '✓ Удержано' : '✓ Выплачено'}</button>
+          </div>`).join('')}
+        </div>`;
+      }).join('');
+    }
+    function settlementSummary(rows) {
+      const peopleCount = new Set(rows.map(row => row.personId)).size;
+      const totals = new Map();
+      rows.forEach(row => {
+        const currency = currencyWord(row.currency);
+        totals.set(currency, (totals.get(currency) || 0) + row.payroll);
+      });
+      const amounts = [...totals.entries()].map(([currency, amount]) => `${formatAmount(amount)} ${currency}`).join(' + ');
+      return `${peopleCount} чел.${amounts ? ` · ${amounts}` : ''}`;
+    }
+    function renderSettlements() {
+      const monthInput = byId('settlementMonth');
+      if (!monthInput) return;
+      if (!monthInput.value) monthInput.value = today().slice(0, 7);
+      const search = (byId('settlementSearch')?.value || '').trim().toLocaleLowerCase('ru-RU');
+      const rows = settlementRows(monthInput.value).filter(row =>
+        !search || row.personName.toLocaleLowerCase('ru-RU').includes(search) || row.projectName.toLocaleLowerCase('ru-RU').includes(search)
+      );
+      const unsettled = rows.filter(row => !row.settled);
+      const settled = rows.filter(row => row.settled);
+      byId('unsettledList').innerHTML = settlementGroupsHtml(rows, false);
+      byId('settledList').innerHTML = settlementGroupsHtml(rows, true);
+      byId('unsettledSummary').textContent = settlementSummary(unsettled);
+      byId('settledSummary').textContent = settlementSummary(settled);
+    }
+    function incomingKindText(kind) {
+      return ({ timesheet: 'Табель', salary_advance: 'Личный аванс', company_funds: 'Рабочие деньги и чеки', company_advance: 'Выдача рабочих денег', advance: 'Аванс', receipt: 'Чек по рабочим деньгам', compensation: 'Компенсация', unconfigured: 'Чат не назначен' })[kind] || 'Не определено';
+    }
+    function incomingStatusText(status) {
+      return ({ received: 'Получено', processing: 'ИИ обрабатывает', ready: 'Готово к проверке', needs_review: 'Нужна проверка', applied: 'Внесено', rejected: 'Исключено', failed: 'Ошибка обработки' })[status] || 'Ожидает';
+    }
+    function incomingStatusClass(status) {
+      if (status === 'applied') return 'paid';
+      if (['ready', 'needs_review'].includes(status)) return 'sent';
+      if (status === 'failed') return 'overdue';
+      return 'draft';
+    }
+    function incomingSummary(item) {
+      const draft = item.ai || {};
+      if (item.kind === 'timesheet') {
+        const project = getProject(draft.projectId);
+        const people = (draft.entries || []).filter(entry => getPerson(entry.personId)).length;
+        return `${project?.name || draft.projectName || 'Объект не определён'} · ${draft.month || 'месяц не определён'} · ${people} чел.`;
+      }
+      const person = getPerson(draft.personId);
+      return `${person?.name || draft.personName || 'Сотрудник не определён'} · ${draft.amount ? money(draft.amount, draft.currency) : 'сумма не определена'}`;
+    }
+    function renderInbox() {
+      const metrics = byId('inboxMetrics');
+      const tableTarget = byId('inboxTable');
+      if (!metrics || !tableTarget) return;
+      const inbox = state.telegram?.inbox || [];
+      const awaiting = inbox.filter(item => ['received', 'processing', 'ready', 'needs_review'].includes(item.status)).length;
+      const ready = inbox.filter(item => item.status === 'ready').length;
+      const applied = inbox.filter(item => item.status === 'applied').length;
+      metrics.innerHTML = [
+        metric('В очереди', awaiting, 'Сообщения из подключённых чатов'),
+        metric('Готово к внесению', ready, 'Проверьте результат ИИ'),
+        metric('Внесено', applied, 'Подтверждённые записи')
+      ].join('');
+      const rows = [...inbox].sort((a, b) => String(b.receivedAt || '').localeCompare(String(a.receivedAt || ''))).map(item => {
+        const received = item.receivedAt ? new Date(item.receivedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        const canApply = item.status === 'ready';
+        const chatSetup = item.kind === 'unconfigured'
+          ? `<div class="row-actions"><select id="telegram-chat-${item.id}"><option value="timesheet">Табели</option><option value="salary_advance">Личные авансы</option><option value="company_funds">Рабочие деньги и чеки</option><option value="compensation">Компенсации</option></select><button class="good" onclick="configureTelegramChat('${item.id}')">Назначить чат</button></div>`
+          : '';
+        const actions = item.status === 'applied' || item.status === 'rejected'
+          ? ''
+          : chatSetup || `<div class="row-actions">${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
+        return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${incomingStatusText(item.status)}</span>`, received, actions];
+      });
+      tableTarget.innerHTML = table(['Тип', 'Чат', 'Источник', 'Результат ИИ', 'Статус', 'Получено', ''], rows, 'Входящих сообщений из Telegram пока нет');
+    }
+    function applyTelegramIncoming(id) {
+      const item = state.telegram?.inbox?.find(record => record.id === id);
+      if (!item || item.status !== 'ready') return;
+      const draft = item.ai || {};
+      const processedKind = item.kind === 'company_funds' ? draft.documentType : item.kind;
+      if (processedKind === 'timesheet') {
+        if (!draft.projectId || !draft.month || !Array.isArray(draft.entries) || !draft.entries.length) {
+          item.status = 'needs_review';
+          item.error = 'Не определены объект, месяц или сотрудники.';
+          renderInbox();
+          return;
+        }
+        const duplicate = state.timesheets.find(sheet => sheet.projectId === draft.projectId && sheetMonth(sheet) === draft.month);
+        if (duplicate) {
+          item.status = 'needs_review';
+          item.error = 'Табель за этот объект и месяц уже существует.';
+          renderInbox();
+          return;
+        }
+        const dayCount = monthDayCount(draft.month);
+        const entries = draft.entries.filter(entry => getPerson(entry.personId)).map(entry => ({
+          personId: entry.personId,
+          hours: Array.from({ length: dayCount }, (_, index) => num(entry.hours?.[index]))
+        }));
+        if (!entries.length) {
+          item.status = 'needs_review';
+          item.error = 'ИИ не сопоставил сотрудников с вашей базой.';
+          renderInbox();
+          return;
+        }
+        state.timesheets.push({ id: uid(), projectId: draft.projectId, month: draft.month, weekStart: monthStart(draft.month), notes: `Telegram: ${item.source?.chatTitle || ''}`, photo: '', photos: [], entries, sourceIncomingId: item.id, status: 'draft' });
+      } else if (['advance', 'salary_advance', 'company_advance'].includes(processedKind)) {
+        if (!draft.personId || !draft.amount) return alert('Перед внесением ИИ должен определить сотрудника и сумму.');
+        const advanceDate = draft.date || today();
+        const advanceType = processedKind === 'company_advance' ? 'company' : processedKind === 'salary_advance' ? 'salary' : draft.advanceType === 'company' ? 'company' : 'salary';
+        state.advances.push({ id: uid(), personId: draft.personId, projectId: draft.projectId || '', amount: num(draft.amount), currency: draft.currency || '€', date: advanceDate, notes: draft.notes || '', sourceIncomingId: item.id, advanceType, deductionMonth: draft.deductionMonth || nextMonth(advanceDate), status: 'issued' });
+      } else if (processedKind === 'receipt') {
+        if (!draft.amount) return alert('Перед внесением ИИ должен определить сумму расхода.');
+        const matching = state.advances.filter(advance => advance.advanceType === 'company'
+          && advance.personId === draft.personId
+          && (!draft.projectId || advance.projectId === draft.projectId)
+          && !advance.deductedAt
+          && companyAdvanceBalance(advance) > 0);
+        const advanceId = draft.advanceId || (matching.length === 1 ? matching[0].id : '');
+        if (!advanceId) return alert('ИИ не смог однозначно сопоставить чек с рабочими деньгами. Выберите аванс при проверке.');
+        const advance = state.advances.find(record => record.id === advanceId);
+        state.expenses.push({ id: uid(), personId: draft.personId || advance?.personId || '', projectId: draft.projectId || advance?.projectId || '', amount: num(draft.amount), currency: draft.currency || advance?.currency || '€', date: draft.date || today(), category: draft.category || 'Другое', notes: draft.notes || '', sourceIncomingId: item.id, paymentSource: 'advance', advanceId, status: 'reported' });
+      } else if (processedKind === 'compensation') {
+        if (!draft.personId || !draft.amount) return alert('Перед внесением ИИ должен определить сотрудника и сумму.');
+        const expenseDate = draft.date || today();
+        state.expenses.push({ id: uid(), personId: draft.personId, projectId: draft.projectId || '', amount: num(draft.amount), currency: draft.currency || '€', date: expenseDate, category: draft.category || 'Другое', notes: draft.notes || '', sourceIncomingId: item.id, paymentSource: 'employee', reimbursementMonth: draft.reimbursementMonth || nextMonth(expenseDate), status: 'approved' });
+      } else {
+        item.status = 'needs_review';
+        item.error = 'ИИ не определил: это выдача рабочих денег или чек.';
+        renderInbox();
+        return;
+      }
+      item.status = 'applied';
+      item.appliedAt = new Date().toISOString();
+      saveState();
+      render();
+    }
+    function rejectTelegramIncoming(id) {
+      const item = state.telegram?.inbox?.find(record => record.id === id);
+      if (!item || item.status === 'applied') return;
+      item.status = 'rejected';
+      saveState();
+      renderInbox();
+    }
+    function configureTelegramChat(id) {
+      const item = state.telegram?.inbox?.find(record => record.id === id);
+      const selector = byId(`telegram-chat-${id}`);
+      if (!item || !selector || !item.source?.chatId) return;
+      const existing = state.telegram.chats.find(chat => String(chat.chatId) === String(item.source.chatId));
+      const chat = existing || { chatId: String(item.source.chatId) };
+      chat.title = item.source.chatTitle || 'Telegram';
+      chat.purpose = selector.value;
+      if (!existing) state.telegram.chats.push(chat);
+      item.kind = chat.purpose;
+      item.status = 'received';
+      delete item.error;
+      saveState();
+      renderInbox();
+    }
+    function toggleSettlement(month, projectId, personId) {
+      const index = state.settlements.findIndex(item =>
+        item.month === month && item.projectId === projectId && item.personId === personId
+      );
+      if (index >= 0) {
+        state.settlements.splice(index, 1);
+        state.advances.filter(advance => advance.personId === personId
+          && advance.deductionMonth === month
+          && advanceProjectId(advance) === projectId
+        ).forEach(advance => {
+          delete advance.deductedAt;
+          advance.status = 'issued';
+        });
+      } else {
+        state.settlements.push({ id: uid(), month, projectId, personId, paidAt: today(), settledAt: today() });
+        state.advances.filter(advance => advance.personId === personId
+          && advance.deductionMonth === month
+          && advanceProjectId(advance) === projectId
+        ).forEach(advance => {
+          advance.deductedAt = today();
+          advance.status = 'deducted';
+        });
+      }
+      saveState();
+      renderSettlements();
+    }
+    function renderMobilePayrollBreakdown() {
+      const container = byId('mobilePayrollBreakdown');
+      if (!container) return;
+      const personId = byId('printReportPerson')?.value;
+      const projectId = byId('printReportProject')?.value;
+      let items = [];
+      if (personId) {
+        const rows = payrollRows(monthFilter({ personId }));
+        items = aggregatePayrollByProject(rows).map(row => ({
+          name: row.projectName || 'Объект не указан',
+          hours: row.hours,
+          rate: getPerson(personId)?.rate,
+          payroll: row.payroll,
+          currency: getPerson(personId)?.currency
+        }));
+      } else if (projectId) {
+        const groups = new Map();
+        payrollRows(monthFilter({ projectId })).forEach(row => {
+          const current = groups.get(row.personId) || {
+            name: row.personName,
+            hours: 0,
+            rate: row.rate,
+            payroll: 0,
+            currency: row.currency
+          };
+          current.hours += row.hours;
+          current.payroll += row.payroll;
+          groups.set(row.personId, current);
+        });
+        items = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+      }
+      if (!items.length) {
+        const message = personId || projectId
+          ? 'За выбранный месяц часов пока нет'
+          : 'Выберите сотрудника или объект';
+        container.innerHTML = `<div class="mobile-payroll-empty">${message}</div>`;
+        return;
+      }
+      container.innerHTML = items.map(item => `
+        <div class="mobile-payroll-card">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span class="payroll-card-total">${formatAmount(item.payroll)} ${escapeHtml(currencyWord(item.currency))}</span>
+          <span class="payroll-card-detail">${formatHours(item.hours)} ч × ${formatRate(item.rate)}</span>
+        </div>
+      `).join('');
+    }
+    function printReportText() {
+      const personId = byId('printReportPerson')?.value;
+      if (personId) return employeeReportText(personId);
+      return projectReportText(byId('printReportProject').value);
+    }
+    function reportMonth() {
+      return byId('printReportMonth')?.value || today().slice(0, 7);
+    }
+    function monthFilter(extra = {}) {
+      const month = reportMonth();
+      return { from: monthStart(month), to: `${month}-${String(monthDayCount(month)).padStart(2, '0')}`, ...extra };
+    }
+    function employeeReportText(personId) {
+      const person = getPerson(personId);
+      if (!person) return 'Выберите сотрудника.';
+      const rows = payrollRows(monthFilter({ personId: person.id }));
+      const byProject = aggregatePayrollByProject(rows);
+      const totals = rows.reduce((acc, row) => {
+        acc.hours += row.hours;
+        acc.payroll += row.payroll;
+        return acc;
+      }, { hours: 0, payroll: 0 });
+      const company = person.legalEntity || 'V&V';
+      const owner = accountOwnerName(person).toUpperCase();
+      const currencyText = currencyWord(person.currency);
+      const lines = [
+        person.name.toUpperCase(),
+        monthName(monthStart(reportMonth())),
+        company
+      ];
+      byProject.forEach(row => {
+        lines.push('', row.projectName.toUpperCase(), `${formatHours(row.hours)}*${formatRate(person.rate)} = ${formatAmount(row.payroll)} ${currencyText}`.trim());
+      });
+      lines.push('', `ИТОГО: ${formatHours(totals.hours)}*${formatRate(person.rate)} = ${formatAmount(totals.payroll)} ${currencyText}`.trim(), '', owner, person.bankAccount || 'счет не указан');
+      return lines.join('\n');
+    }
+    function projectReportText(projectId) {
+      const project = getProject(projectId);
+      if (!project) return 'Выберите объект.';
+      const rows = payrollRows(monthFilter({ projectId }));
+      const byPerson = new Map();
+      rows.forEach(row => {
+        const current = byPerson.get(row.personId) || { person: getPerson(row.personId), hours: 0, payroll: 0, rate: row.rate, currency: row.currency };
+        current.hours += row.hours;
+        current.payroll += row.payroll;
+        byPerson.set(row.personId, current);
+      });
+      const groups = {};
+      [...byPerson.values()].forEach(item => {
+        const entity = item.person?.legalEntity || 'НЕ ОФОРМЛЕН';
+        if (!groups[entity]) groups[entity] = [];
+        groups[entity].push(item);
+      });
+      const lines = [project.name.toUpperCase(), monthName(monthStart(reportMonth()))];
+      Object.keys(groups).sort().forEach(entity => {
+        lines.push('', entity, '');
+        groups[entity].sort((a, b) => (a.person?.name || '').localeCompare(b.person?.name || '')).forEach(item => {
+          const person = item.person;
+          lines.push(`${formatHours(item.hours)}*${formatRate(item.rate)} = ${formatAmount(item.payroll)} ${currencyWord(item.currency)}`);
+          lines.push('');
+          lines.push((accountOwnerName(person) || person?.name || '').toUpperCase());
+          lines.push(person?.bankAccount || 'счет не указан');
+          lines.push('');
+        });
+      });
+      return lines.join('\n').trim();
+    }
+    function currencyWord(currency) {
+      return (currency || '').includes('€') ? 'euro' : (currency || '');
+    }
+    function monthName(dateText) {
+      const months = ['ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ', 'АВГУСТ', 'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ'];
+      const date = new Date(`${dateText}T00:00:00`);
+      return months[Number.isNaN(date.getTime()) ? new Date().getMonth() : date.getMonth()];
+    }
+    function trimNumber(value, decimals = 2, comma = false) {
+      const text = Number(value || 0).toFixed(decimals).replace(/\.?0+$/, '');
+      return comma ? text.replace('.', ',') : text;
+    }
+    function formatHours(value) { return trimNumber(value, 2, true); }
+    function formatRate(value) { return trimNumber(value, 2, false); }
+    function formatAmount(value) { return trimNumber(value, 2, false); }
+    function periodLabel(row) {
+      return row.source === 'month' || row.source === 'timesheet' ? row.periodLabel : `${row.weekStart} - ${weekEnd(row.weekStart)}`;
+    }
+    function printEmployeeReport() {
+      const text = printReportText();
+      const popup = window.open('', '_blank');
+      if (!popup) return alert('Браузер заблокировал окно печати');
+      popup.document.write(`<html><head><title>Карточка сотрудника</title><style>body{font-family:Arial,sans-serif;padding:24px;line-height:1.5;white-space:pre-wrap}</style></head><body>${escapeHtml(text)}</body></html>`);
+      popup.document.close();
+      popup.focus();
+      popup.print();
+    }
+    async function copyPayrollReport() {
+      const text = printReportText().trim();
+      if (!text || text.startsWith('Выберите')) {
+        alert('Сначала выберите сотрудника или объект');
+        return;
+      }
+      let copied = false;
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (error) {
+          copied = false;
+        }
+      }
+      if (!copied) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        textarea.style.fontSize = '16px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        try {
+          copied = document.execCommand('copy');
+        } catch (error) {
+          copied = false;
+        }
+        textarea.remove();
+      }
+      const status = byId('copyPayrollStatus');
+      if (copied) {
+        if (status) status.textContent = 'Расчёт скопирован. Можно вставить его в сообщение.';
+        const button = byId('copyPayrollReportBtn');
+        const originalText = button.textContent;
+        button.textContent = 'Скопировано';
+        window.setTimeout(() => {
+          button.textContent = originalText;
+        }, 1800);
+      } else {
+        if (status) status.textContent = '';
+        alert('Не удалось скопировать автоматически. Нажмите и удерживайте текст расчёта, затем выберите «Копировать».');
+      }
+    }
+    function accountOwnerName(person) {
+      if (person.accountOwnerType === 'other') return person.accountOwnerName || 'не указан';
+      return person.accountOwnerName || person.name;
+    }
+    function accountOwnerLabel(person) {
+      return person.accountOwnerType === 'other' ? `Владелец: ${accountOwnerName(person)}` : 'Счет сотрудника';
+    }
+    function payrollRows(filter = {}) {
+      const rows = [];
+      state.timesheets.forEach(sheet => {
+        const date = monthStart(sheetMonth(sheet));
+        if (!inRange(date, filter.from, filter.to)) return;
+        if (filter.projectId && sheet.projectId !== filter.projectId) return;
+        const project = getProject(sheet.projectId);
+        sheet.entries.forEach(entry => {
+          if (filter.personId && entry.personId !== filter.personId) return;
+          const person = getPerson(entry.personId);
+          if (!person) return;
+          const hours = entry.hours.reduce((sum, h) => sum + num(h), 0);
+          if (!hours) return;
+          const payroll = hours * num(person.rate);
+          const revenue = hours * num(project?.billRate);
+          rows.push({ weekStart: date, periodLabel: monthDisplay(sheetMonth(sheet)), personId: person.id, personName: person.name, projectId: sheet.projectId, projectName: project?.name || '', hours, rate: person.rate, currency: person.currency, projectCurrency: project?.currency || person.currency, payroll, revenue, profit: revenue - payroll, source: 'timesheet' });
+        });
+      });
+      state.monthlyHours.forEach(item => {
+        const date = monthDateFromInput(item.month);
+        if (!inRange(date, filter.from, filter.to)) return;
+        if (filter.projectId && item.projectId !== filter.projectId) return;
+        if (filter.personId && item.personId !== filter.personId) return;
+        const project = getProject(item.projectId);
+        const person = getPerson(item.personId);
+        if (!person) return;
+        const hours = num(item.hours);
+        if (!hours) return;
+        const payroll = hours * num(person.rate);
+        const revenue = hours * num(project?.billRate);
+        rows.push({ weekStart: date, periodLabel: monthName(date), personId: person.id, personName: person.name, projectId: item.projectId, projectName: project?.name || '', hours, rate: person.rate, currency: person.currency, projectCurrency: project?.currency || person.currency, payroll, revenue, profit: revenue - payroll, source: 'month' });
+      });
+      return rows.sort((a, b) => (b.weekStart || '').localeCompare(a.weekStart || '') || a.personName.localeCompare(b.personName));
+    }
+    function monthDateFromInput(month) {
+      return month ? `${month}-01` : today().slice(0, 7) + '-01';
+    }
+    function table(headers, rows, emptyText) {
+      if (!rows.length) return `<tbody><tr><td colspan="${headers.length}"><div class="empty">${emptyText}</div></td></tr></tbody>`;
+      return `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    }
+    function statusBadge(invoice) {
+      const overdue = invoice.status !== 'paid' && invoice.dueDate && invoice.dueDate < today();
+      const cls = overdue ? 'overdue' : invoice.status;
+      const text = overdue ? 'Просрочен' : ({ draft: 'Черновик', sent: 'Выставлен', paid: 'Оплачен' }[invoice.status] || invoice.status);
+      return `<span class="status ${cls}">${text}</span>`;
+    }
+    function invoiceStatusText(invoice) {
+      const overdue = invoice.status !== 'paid' && invoice.dueDate && invoice.dueDate < today();
+      if (overdue) return 'Просрочен';
+      return { draft: 'Черновик', sent: 'Выставлен', paid: 'Оплачен' }[invoice.status] || invoice.status;
+    }
+    function syncSheetEntries(sheet) {
+      const dayCount = monthDayCount(sheetMonth(sheet));
+      sheet.entries = sheet.entries.filter(entry => getPerson(entry.personId));
+      sheet.entries.forEach(entry => entry.hours = Array.from({ length: dayCount }, (_, index) => num(entry.hours?.[index])));
+    }
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+    function normalizedPersonName(value) {
+      return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU');
+    }
+    function addPerson() {
+      const name = byId('personName').value.trim();
+      if (!name) return alert('Введите имя сотрудника');
+      const duplicate = state.people.find(person => person.id !== editingPersonId && normalizedPersonName(person.name) === normalizedPersonName(name));
+      if (duplicate) {
+        alert(`Сотрудник "${duplicate.name}" уже есть в списке. Откройте существующую запись и отредактируйте её.`);
+        return;
+      }
+      const personData = { name, rate: num(byId('personRate').value), currency: byId('personCurrency').value.trim() || '€', legalEntity: byId('personLegalEntity').value.trim() || 'V&V', bankAccount: byId('personBankAccount').value.trim(), accountOwnerType: byId('personAccountOwnerType').value, accountOwnerName: byId('personAccountOwnerName').value.trim(), notes: byId('personNotes').value.trim() };
+      if (editingPersonId) {
+        const person = getPerson(editingPersonId);
+        if (person) Object.assign(person, personData);
+      } else {
+        state.people.push({ id: uid(), ...personData });
+      }
+      editingPersonId = null;
+      ['personName', 'personRate', 'personLegalEntity', 'personBankAccount', 'personAccountOwnerName', 'personNotes'].forEach(id => byId(id).value = '');
+      byId('personAccountOwnerType').value = 'self';
+      byId('addPersonBtn').textContent = 'Сохранить сотрудника';
+      render();
+    }
+    function splitBulkLine(line) {
+      if (line.includes(';')) return line.split(';');
+      if (line.includes('\t')) return line.split('\t');
+      if (line.includes(',')) return line.split(',');
+      return [line];
+    }
+    function addBulkPeople() {
+      const text = byId('bulkPeopleInput').value.trim();
+      if (!text) return alert('Вставьте список сотрудников');
+      const existingNames = new Set(state.people.map(person => normalizedPersonName(person.name)));
+      let added = 0;
+      let skipped = 0;
+      text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).forEach(line => {
+        const parts = splitBulkLine(line).map(part => part.trim());
+        const [name, rate, legalEntity, bankAccount, accountOwnerName, notes] = parts;
+        if (!name || existingNames.has(normalizedPersonName(name))) {
+          skipped++;
+          return;
+        }
+        state.people.push({
+          id: uid(),
+          name,
+          rate: num(rate),
+          currency: '€',
+          legalEntity: legalEntities.includes(legalEntity) ? legalEntity : (legalEntity || 'V&V'),
+          bankAccount: bankAccount || '',
+          accountOwnerType: accountOwnerName ? 'other' : 'self',
+          accountOwnerName: accountOwnerName || '',
+          notes: notes || ''
+        });
+        existingNames.add(normalizedPersonName(name));
+        added++;
+      });
+      byId('bulkPeopleInput').value = '';
+      render();
+      alert(`Добавлено: ${added}. Пропущено: ${skipped}.`);
+    }
+    function saveInlinePerson(id) {
+      const person = getPerson(id);
+      if (!person) return;
+      const fields = document.querySelectorAll(`[data-person-id="${id}"][data-person-field]`);
+      const nameField = [...fields].find(field => field.dataset.personField === 'name');
+      const proposedName = nameField?.value.trim() || person.name;
+      const duplicate = state.people.find(item => item.id !== id && normalizedPersonName(item.name) === normalizedPersonName(proposedName));
+      if (duplicate) {
+        alert(`Сотрудник "${duplicate.name}" уже есть в списке. Изменение имени не сохранено.`);
+        renderPeople();
+        return;
+      }
+      fields.forEach(field => {
+        const name = field.dataset.personField;
+        if (name === 'rate') person[name] = num(field.value);
+        else person[name] = field.value.trim();
+      });
+      person.currency = person.currency || '€';
+      person.accountOwnerType = person.accountOwnerName ? 'other' : 'self';
+      saveState();
+      render();
+    }
+    function editPerson(id) {
+      const person = getPerson(id);
+      if (!person) return;
+      editingPersonId = id;
+      byId('personName').value = person.name || '';
+      byId('personRate').value = person.rate || '';
+      byId('personCurrency').value = person.currency || '€';
+      byId('personLegalEntity').value = person.legalEntity || 'V&V';
+      byId('personBankAccount').value = person.bankAccount || '';
+      byId('personAccountOwnerType').value = person.accountOwnerType || 'self';
+      byId('personAccountOwnerName').value = person.accountOwnerName || '';
+      byId('personNotes').value = person.notes || '';
+      byId('addPersonBtn').textContent = 'Обновить сотрудника';
+      document.querySelector('button[data-view="people"]').click();
+    }
+    function addProject() {
+      const name = byId('projectName').value.trim();
+      if (!name) return alert('Введите название объекта');
+      state.projects.push({ id: uid(), name, billRate: num(byId('projectBillRate').value), currency: byId('projectCurrency').value.trim() || '€', client: byId('projectClient').value.trim(), notes: byId('projectNotes').value.trim(), completed: false });
+      ['projectName', 'projectBillRate', 'projectClient', 'projectNotes'].forEach(id => byId(id).value = '');
+      render();
+    }
+    function addInvoice() {
+      if (!byId('invoiceProject').value) return alert('Сначала добавьте объект');
+      const periodFrom = byId('invoicePeriodFrom').value;
+      const periodTo = byId('invoicePeriodTo').value;
+      if (!periodFrom || !periodTo) return alert('Укажите период работ, за который выставляется фактура.');
+      if (periodFrom > periodTo) return alert('Начало периода не может быть позже окончания.');
+      state.invoices.push({ id: uid(), projectId: byId('invoiceProject').value, number: byId('invoiceNumber').value.trim(), date: byId('invoiceDate').value || today(), periodFrom, periodTo, dueDate: byId('invoiceDue').value, amount: num(byId('invoiceAmount').value), status: byId('invoiceStatus').value, notes: byId('invoiceNotes').value.trim() });
+      ['invoiceNumber', 'invoiceAmount', 'invoiceNotes'].forEach(id => byId(id).value = '');
+      render();
+    }
+    function addMonthlyHours() {
+      if (!byId('monthlyPerson').value) return alert('Сначала добавьте сотрудника');
+      if (!byId('monthlyProject').value) return alert('Сначала добавьте объект');
+      const hours = num(byId('monthlyHours').value);
+      if (!hours) return alert('Введите часы за месяц');
+      state.monthlyHours.push({
+        id: uid(),
+        personId: byId('monthlyPerson').value,
+        projectId: byId('monthlyProject').value,
+        month: byId('monthlyMonth').value || today().slice(0, 7),
+        hours,
+        notes: byId('monthlyNotes').value.trim()
+      });
+      byId('monthlyHours').value = '';
+      byId('monthlyNotes').value = '';
+      render();
+    }
+    function deleteMonthlyHours(id) {
+      if (!confirm('Удалить месячные часы?')) return;
+      state.monthlyHours = state.monthlyHours.filter(item => item.id !== id);
+      render();
+    }
+    function deleteSheetPhoto(index) {
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) return;
+      sheet.photos = (sheet.photos || []).filter((photo, photoIndex) => photoIndex !== index);
+      sheet.photo = sheet.photos[0] || '';
+      render();
+    }
+    function startNewSheet() {
+      if (!state.projects.length) return alert('Сначала добавьте объект');
+      const currentSheet = getSheet(activeSheetId);
+      creatingSheet = true;
+      activeSheetId = null;
+      byId('sheetPeopleSearch').value = '';
+      byId('sheetWeek').value = today().slice(0, 7);
+      byId('sheetNotes').value = '';
+      byId('sheetProject').value = currentSheet?.projectId || byId('sheetProject').value || projectsAlphabetically()[0]?.id || '';
+      usePreviousSheetPeople(byId('sheetProject').value);
+      render();
+      if (isMobileLayout()) document.querySelector('#timesheets .timesheet-page > .panel:first-child')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function cancelNewSheet() {
+      creatingSheet = false;
+      newSheetPersonIds = new Set();
+      activeSheetId = [...state.timesheets].sort((a, b) => sheetMonth(b).localeCompare(sheetMonth(a)))[0]?.id || null;
+      render();
+    }
+    function createNewSheet() {
+      const projectId = byId('sheetProject').value || projectsAlphabetically()[0].id;
+      const month = byId('sheetWeek').value || today().slice(0, 7);
+      const personIds = selectedSheetPersonIds();
+      if (!personIds.length) return alert('Выберите сотрудников для табеля');
+      const duplicate = state.timesheets.find(item => item.projectId === projectId && sheetMonth(item) === month);
+      if (duplicate) {
+        creatingSheet = false;
+        activeSheetId = duplicate.id;
+        newSheetPersonIds = new Set();
+        render();
+        alert('Табель по этому объекту и месяцу уже существует. Открыт существующий табель — новый дубликат не создан.');
+        return;
+      }
+      const sheet = { id: uid(), projectId, month, weekStart: monthStart(month), notes: byId('sheetNotes').value.trim(), photo: '', photos: [], entries: buildSheetEntries(personIds, month) };
+      state.timesheets.push(sheet);
+      creatingSheet = false;
+      activeSheetId = sheet.id;
+      newSheetPersonIds = new Set();
+      render();
+    }
+    function saveSheetMeta() {
+      if (creatingSheet || !getSheet(activeSheetId)) {
+        createNewSheet();
+        return;
+      }
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) return alert('Выберите табель для редактирования или нажмите «Новый табель».');
+      const projectId = byId('sheetProject').value;
+      const month = byId('sheetWeek').value || today().slice(0, 7);
+      const duplicate = state.timesheets.find(item => item.id !== sheet.id && item.projectId === projectId && sheetMonth(item) === month);
+      if (duplicate) {
+        alert('Другой табель по этому объекту и месяцу уже существует. Изменения не сохранены.');
+        return;
+      }
+      sheet.projectId = projectId;
+      sheet.month = month;
+      sheet.weekStart = monthStart(sheet.month);
+      sheet.notes = byId('sheetNotes').value.trim();
+      const personIds = selectedSheetPersonIds();
+      if (!personIds.length) return alert('Выберите сотрудников для табеля');
+      updateSheetPeopleEntries(sheet, personIds);
+      render();
+    }
+    function selectSheet(id) {
+      creatingSheet = false;
+      newSheetPersonIds = new Set();
+      activeSheetId = id;
+      mobileWeekIndex = preferredMobileWeekIndex(sheetMonth(getSheet(id)));
+      render();
+    }
+    function openSheetForEditing(id) {
+      const sheet = getSheet(id);
+      if (!sheet) {
+        alert('Табель не найден. Обновите страницу и попробуйте ещё раз.');
+        return;
+      }
+      selectSheet(id);
+      document.querySelector('button[data-view="timesheets"]')?.click();
+      window.requestAnimationFrame(() => {
+        byId('sheetModeBanner')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+    function updateHour(sheetId, personId, dayIndex, value) {
+      const entry = getSheet(sheetId)?.entries.find(item => item.personId === personId);
+      if (!entry) return;
+      const rawValue = typeof value === 'object' ? value.value : value;
+      entry.hours[dayIndex] = num(rawValue);
+      if (typeof value === 'object') value.classList.toggle('filled-cell', num(rawValue) > 0);
+      if (byId('timesheetSaveStatus')) byId('timesheetSaveStatus').textContent = 'Есть несохранённые изменения...';
+      saveState();
+      refreshHourTotals(sheetId, entry.personId);
+      renderObjectDays();
+    }
+    async function saveTimesheet() {
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) return alert('Сначала выберите или создайте табель.');
+      saveLocalState();
+      if (isCloudMode) cloudReady = true;
+      const saved = isCloudMode ? await saveCloudState() : true;
+      const status = byId('timesheetSaveStatus');
+      if (status) status.textContent = saved ? `Сохранено: ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : 'Не удалось сохранить на сервере или открыта старая версия данных.';
+      if (!saved) alert('Не удалось сохранить табель на сервере. Проверьте, что сервер запущен.');
+    }
+    function refreshHourTotals(sheetId, personId) {
+      const sheet = getSheet(sheetId);
+      if (!sheet) return;
+      const totals = sheetTotals(sheet);
+      byId('activeSheetHours').value = totals.hours.toFixed(2);
+      const entry = sheet.entries.find(item => item.personId === personId);
+      const rowIndex = sheet.entries.findIndex(item => item.personId === personId);
+      const person = getPerson(personId);
+      const rowHours = entry?.hours?.reduce((sum, h) => sum + num(h), 0) || 0;
+      const payroll = rowHours * num(person?.rate);
+      const hoursCell = document.querySelector(`.row-total-hours[data-row="${rowIndex}"]`);
+      const payrollCell = document.querySelector(`.row-total-payroll[data-row="${rowIndex}"]`);
+      if (hoursCell) hoursCell.textContent = rowHours.toFixed(2);
+      if (payrollCell) payrollCell.textContent = money(payroll, person?.currency);
+      refreshHoursFooter(sheet);
+      refreshDependentViews();
+    }
+    function selectHourCell(input, event = {}) {
+      const row = num(input.dataset.row);
+      const col = num(input.dataset.col);
+      if (event.shiftKey && hourSelection?.anchor) {
+        hourSelection.focus = { row, col };
+      } else {
+        hourSelection = { anchor: { row, col }, focus: { row, col } };
+      }
+      paintHourSelection();
+      input.select();
+    }
+    function beginHourRange(input, event = {}) {
+      if (!input?.classList?.contains('hours-input')) return;
+      if (event.shiftKey && hourSelection?.anchor) {
+        isSelectingHours = true;
+        hourSelection.focus = { row: num(input.dataset.row), col: num(input.dataset.col) };
+        paintHourSelection();
+        return;
+      }
+      isSelectingHours = true;
+      hourSelection = { anchor: { row: num(input.dataset.row), col: num(input.dataset.col) }, focus: { row: num(input.dataset.row), col: num(input.dataset.col) } };
+      paintHourSelection();
+    }
+    function extendHourRange(input) {
+      if (!isSelectingHours || !input?.classList?.contains('hours-input')) return;
+      hourSelection.focus = { row: num(input.dataset.row), col: num(input.dataset.col) };
+      paintHourSelection();
+    }
+    function paintHourSelection() {
+      document.querySelectorAll('#hoursTable input.hours-input').forEach(input => {
+        input.classList.remove('selected-cell', 'active-cell');
+      });
+      if (!hourSelection) {
+        showSelectionSum(0, 0);
+        return;
+      }
+      const bounds = selectionBounds();
+      document.querySelectorAll('#hoursTable input.hours-input').forEach(input => {
+        const row = num(input.dataset.row);
+        const col = num(input.dataset.col);
+        if (row >= bounds.rowMin && row <= bounds.rowMax && col >= bounds.colMin && col <= bounds.colMax) {
+          input.classList.add('selected-cell');
+        }
+      });
+      const active = document.querySelector(`#hoursTable input.hours-input[data-row="${hourSelection.focus.row}"][data-col="${hourSelection.focus.col}"]`);
+      if (active) active.classList.add('active-cell');
+      showSelectionSum(selectedHoursGrid().flat().reduce((sum, value) => sum + num(String(value).replace(',', '.')), 0), selectedHoursGrid().flat().length);
+    }
+    function showSelectionSum(sum, count) {
+      const bar = byId('selectionSumBar');
+      if (!bar) return;
+      if (!count) {
+        bar.classList.remove('visible');
+        return;
+      }
+      bar.textContent = `Выделено: ${count} | Сумма: ${trimNumber(sum, 2, true)}`;
+      bar.classList.add('visible');
+    }
+    function selectableCellNumber(cell) {
+      if (!cell || cell.tagName !== 'TD' || cell.querySelector('input,select,textarea,button')) return null;
+      const text = cell.textContent.replace(/\u00a0/g, ' ').trim();
+      const match = text.match(/-?\d[\d\s]*(?:[.,]\d+)?/);
+      if (!match) return null;
+      const value = Number(match[0].replace(/\s/g, '').replace(',', '.'));
+      return Number.isFinite(value) ? value : null;
+    }
+    function beginTableSumSelection(target, event) {
+      const cell = target.closest?.('td');
+      if (!cell || cell.closest('#hoursTable') || selectableCellNumber(cell) === null) return;
+      event?.preventDefault();
+      const row = cell.parentElement;
+      tableSumSelection = { table: cell.closest('table'), anchorRow: row.rowIndex, anchorCol: cell.cellIndex, focusRow: row.rowIndex, focusCol: cell.cellIndex };
+      isSelectingTableSum = true;
+      paintTableSumSelection();
+    }
+    function extendTableSumSelection(target) {
+      if (!isSelectingTableSum || !tableSumSelection) return;
+      const cell = target.closest?.('td');
+      if (!cell || cell.closest('table') !== tableSumSelection.table || selectableCellNumber(cell) === null) return;
+      tableSumSelection.focusRow = cell.parentElement.rowIndex;
+      tableSumSelection.focusCol = cell.cellIndex;
+      paintTableSumSelection();
+    }
+    function paintTableSumSelection() {
+      document.querySelectorAll('td.sum-selected-cell').forEach(cell => cell.classList.remove('sum-selected-cell'));
+      if (!tableSumSelection) return;
+      const rowMin = Math.min(tableSumSelection.anchorRow, tableSumSelection.focusRow);
+      const rowMax = Math.max(tableSumSelection.anchorRow, tableSumSelection.focusRow);
+      const colMin = Math.min(tableSumSelection.anchorCol, tableSumSelection.focusCol);
+      const colMax = Math.max(tableSumSelection.anchorCol, tableSumSelection.focusCol);
+      let sum = 0;
+      let count = 0;
+      [...tableSumSelection.table.rows].forEach(row => {
+        if (row.rowIndex < rowMin || row.rowIndex > rowMax) return;
+        [...row.cells].forEach(cell => {
+          if (cell.cellIndex < colMin || cell.cellIndex > colMax) return;
+          const value = selectableCellNumber(cell);
+          if (value === null) return;
+          cell.classList.add('sum-selected-cell');
+          sum += value;
+          count++;
+        });
+      });
+      showSelectionSum(sum, count);
+    }
+    function selectionBounds() {
+      const anchor = hourSelection?.anchor || { row: 0, col: 0 };
+      const focus = hourSelection?.focus || anchor;
+      return {
+        rowMin: Math.min(anchor.row, focus.row),
+        rowMax: Math.max(anchor.row, focus.row),
+        colMin: Math.min(anchor.col, focus.col),
+        colMax: Math.max(anchor.col, focus.col)
+      };
+    }
+    function selectedHoursGrid() {
+      if (!hourSelection) {
+        const active = document.activeElement?.classList?.contains('hours-input') ? document.activeElement : null;
+        if (active) selectHourCell(active, {});
+      }
+      if (!hourSelection) return [];
+      const bounds = selectionBounds();
+      const grid = [];
+      for (let row = bounds.rowMin; row <= bounds.rowMax; row++) {
+        const line = [];
+        for (let col = bounds.colMin; col <= bounds.colMax; col++) {
+          const input = document.querySelector(`#hoursTable input.hours-input[data-row="${row}"][data-col="${col}"]`);
+          line.push(input?.value || '');
+        }
+        grid.push(line);
+      }
+      return grid;
+    }
+    function activeHourInput() {
+      return document.activeElement?.classList?.contains('hours-input') ? document.activeElement : document.querySelector('#hoursTable input.hours-input.active-cell');
+    }
+    function selectActiveHourRow() {
+      const active = activeHourInput();
+      if (!active) return;
+      const row = num(active.dataset.row);
+      const columns = [...document.querySelectorAll(`#hoursTable input.hours-input[data-row="${row}"]`)].map(input => num(input.dataset.col));
+      const minCol = Math.min(...columns);
+      const maxCol = Math.max(...columns);
+      hourSelection = { anchor: { row, col: minCol }, focus: { row, col: maxCol } };
+      paintHourSelection();
+    }
+    function selectHourColumn(col) {
+      const inputs = [...document.querySelectorAll(`#hoursTable input.hours-input[data-col="${col}"]`)];
+      if (!inputs.length) return;
+      const rows = inputs.map(input => num(input.dataset.row));
+      hourSelection = {
+        anchor: { row: Math.min(...rows), col },
+        focus: { row: Math.max(...rows), col }
+      };
+      paintHourSelection();
+    }
+    function clearHoursSelection() {
+      const active = activeHourInput();
+      const sheet = getSheet(active?.dataset.sheetId || activeSheetId);
+      if (!active || !sheet || !hourSelection) return;
+      const bounds = selectionBounds();
+      const touchedPeople = new Set();
+      for (let row = bounds.rowMin; row <= bounds.rowMax; row++) {
+        const entry = sheet.entries[row];
+        if (!entry) continue;
+        for (let col = bounds.colMin; col <= bounds.colMax; col++) {
+          const input = document.querySelector(`#hoursTable input.hours-input[data-row="${row}"][data-col="${col}"]`);
+          if (!input) continue;
+          input.value = '';
+          input.classList.remove('filled-cell');
+          entry.hours[col] = 0;
+          touchedPeople.add(entry.personId);
+        }
+      }
+      saveState();
+      touchedPeople.forEach(personId => refreshHourTotals(sheet.id, personId));
+      renderObjectDays();
+      paintHourSelection();
+    }
+    async function copyHoursSelection(event) {
+      const grid = selectedHoursGrid();
+      if (!grid.length) return;
+      copiedHoursGrid = grid;
+      const text = grid.map(row => row.join('\t')).join('\n');
+      event?.preventDefault();
+      if (event?.clipboardData) event.clipboardData.setData('text/plain', text);
+      else if (navigator.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(text); } catch {}
+      }
+    }
+    function parseHoursClipboard(text) {
+      return String(text || '').trim().split(/\r?\n/).filter(Boolean).map(row => row.split('\t'));
+    }
+    function pasteHoursGrid(grid) {
+      const active = activeHourInput();
+      if (!active || !grid?.length) return;
+      const sheet = getSheet(active.dataset.sheetId || activeSheetId);
+      if (!sheet) return;
+      const startRow = num(active.dataset.row);
+      const startCol = num(active.dataset.col);
+      const touchedPeople = new Set();
+      grid.forEach((line, rowOffset) => {
+        line.forEach((value, colOffset) => {
+          const row = startRow + rowOffset;
+          const col = startCol + colOffset;
+          const input = document.querySelector(`#hoursTable input.hours-input[data-row="${row}"][data-col="${col}"]`);
+          const entry = sheet.entries[row];
+          if (!input || !entry) return;
+          const cleaned = String(value).replace(',', '.').trim();
+          input.value = cleaned;
+          entry.hours[col] = num(cleaned);
+          input.classList.toggle('filled-cell', num(cleaned) > 0);
+          touchedPeople.add(entry.personId);
+        });
+      });
+      saveState();
+      touchedPeople.forEach(personId => refreshHourTotals(sheet.id, personId));
+      renderObjectDays();
+      const endRow = startRow + grid.length - 1;
+      const endCol = startCol + Math.max(...grid.map(row => row.length)) - 1;
+      hourSelection = { anchor: { row: startRow, col: startCol }, focus: { row: endRow, col: endCol } };
+      paintHourSelection();
+    }
+    async function handleHoursCopyPaste(event) {
+      if (!event.target?.classList?.contains('hours-input')) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        await copyHoursSelection(event);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        const text = event.clipboardData?.getData('text/plain');
+        const grid = text ? parseHoursClipboard(text) : copiedHoursGrid;
+        pasteHoursGrid(grid);
+      }
+    }
+    function handleHourKey(event) {
+      if (!event.target?.classList?.contains('hours-input')) return;
+      if ((event.ctrlKey || event.metaKey) && ['c', 'v'].includes(event.key.toLowerCase())) return;
+      if (event.key === 'Delete' || (event.key === 'Backspace' && selectedHoursGrid().flat().length > 1)) {
+        event.preventDefault();
+        clearHoursSelection();
+        return;
+      }
+      const moves = {
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        Enter: [0, 1]
+      };
+      if (!moves[event.key]) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const input = event.target;
+      const row = num(input.dataset.row) + moves[event.key][0];
+      const col = num(input.dataset.col) + moves[event.key][1];
+      const next = document.querySelector(`#hoursTable input.hours-input[data-row="${row}"][data-col="${col}"]`);
+      if (!next) return;
+      next.focus();
+      next.select();
+      selectHourCell(next, event.shiftKey ? { shiftKey: true } : {});
+      next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    function deleteSheet() {
+      if (!activeSheetId || !confirm('Удалить выбранный табель?')) return;
+      state.timesheets = state.timesheets.filter(sheet => sheet.id !== activeSheetId);
+      activeSheetId = state.timesheets[0]?.id || null;
+      render();
+    }
+    function copyPrevWeek() {
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) return;
+      const previous = state.timesheets.filter(item => item.id !== sheet.id && item.projectId === sheet.projectId && sheetMonth(item) < sheetMonth(sheet)).sort((a, b) => sheetMonth(b).localeCompare(sheetMonth(a)))[0];
+      if (!previous) return alert('Прошлый месяц по этому объекту не найден');
+      sheet.entries = JSON.parse(JSON.stringify(previous.entries));
+      render();
+    }
+    function deletePerson(id) {
+      if (!confirm('Удалить сотрудника и его строки из табелей?')) return;
+      state.people = state.people.filter(person => person.id !== id);
+      state.timesheets.forEach(sheet => sheet.entries = sheet.entries.filter(entry => entry.personId !== id));
+      state.monthlyHours = state.monthlyHours.filter(item => item.personId !== id);
+      state.settlements = state.settlements.filter(item => item.personId !== id);
+      render();
+    }
+    function deleteProject(id) {
+      if (!confirm('Удалить объект, его табели и счета?')) return;
+      state.projects = state.projects.filter(project => project.id !== id);
+      state.timesheets = state.timesheets.filter(sheet => sheet.projectId !== id);
+      state.invoices = state.invoices.filter(invoice => invoice.projectId !== id);
+      state.monthlyHours = state.monthlyHours.filter(item => item.projectId !== id);
+      state.settlements = state.settlements.filter(item => item.projectId !== id);
+      if (!getSheet(activeSheetId)) activeSheetId = state.timesheets[0]?.id || null;
+      render();
+    }
+    function deleteInvoice(id) {
+      if (!confirm('Удалить счет?')) return;
+      state.invoices = state.invoices.filter(invoice => invoice.id !== id);
+      render();
+    }
+    function markInvoicePaid(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (invoice) invoice.status = 'paid';
+      render();
+    }
+    function exportJson() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tabel-backup-${today()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+    function exportExcel() {
+      const sheets = [
+        { name: 'Обзор объектов', rows: projectExportRows() },
+        { name: 'Зарплаты', rows: payrollExportRows() },
+        { name: 'Табели', rows: timesheetExportRows() },
+        { name: 'Месячные часы', rows: monthlyHoursExportRows() },
+        { name: 'Счета', rows: invoiceExportRows() },
+        { name: 'Сотрудники', rows: peopleExportRows() },
+        { name: 'Объекты', rows: projectsExportRows() }
+      ];
+      const workbook = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#EAF3F1" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="Money"><NumberFormat ss:Format="#,##0.00"/></Style>
+  <Style ss:ID="Date"><NumberFormat ss:Format="Short Date"/></Style>
+ </Styles>
+ ${sheets.map(excelSheet).join('')}
+</Workbook>`;
+      const blob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tabel-report-${today()}.xls`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+    const visualExcelStyles = `
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="9"/></Style>
+  <Style ss:ID="Title"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Color="#FFFFFF" ss:Bold="1" ss:Size="16"/><Interior ss:Color="#176B87" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="Subtitle"><Font ss:Bold="1" ss:Size="11"/><Interior ss:Color="#EAF3F1" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:Bold="1"/><Interior ss:Color="#EAF3F1" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+  <Style ss:ID="Weekend"><Alignment ss:Horizontal="Right"/><Interior ss:Color="#F1F4F6" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/></Borders><NumberFormat ss:Format="0.##"/></Style>
+  <Style ss:ID="Cell"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/></Borders></Style>
+  <Style ss:ID="Number"><Alignment ss:Horizontal="Right"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/></Borders><NumberFormat ss:Format="0.##"/></Style>
+  <Style ss:ID="Money"><Alignment ss:Horizontal="Right"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DCE3E8"/></Borders><NumberFormat ss:Format="#,##0.00"/></Style>
+  <Style ss:ID="DayTotal"><Font ss:Bold="1"/><Interior ss:Color="#F8FAFB" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><NumberFormat ss:Format="0.##"/></Style>
+  <Style ss:ID="WeekTotal"><Font ss:Bold="1"/><Interior ss:Color="#EEF6F4" ss:Pattern="Solid"/><NumberFormat ss:Format="0.##"/></Style>
+  <Style ss:ID="MonthTotal"><Font ss:Bold="1"/><Interior ss:Color="#E6EDF2" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Double" ss:Weight="3"/></Borders><NumberFormat ss:Format="0.##"/></Style>
+  <Style ss:ID="Project"><Font ss:Bold="1" ss:Size="11" ss:Color="#FFFFFF"/><Interior ss:Color="#176B87" ss:Pattern="Solid"/></Style>
+ </Styles>`;
+    function downloadExcelXml(worksheets, filename, styles = visualExcelStyles) {
+      const workbook = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+${styles}
+${worksheets}
+</Workbook>`;
+      const blob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+    function styledExcelCell(value, styleId = 'Cell', options = {}) {
+      const isNumber = typeof value === 'number' && Number.isFinite(value);
+      const type = isNumber ? 'Number' : 'String';
+      const merge = options.mergeAcross ? ` ss:MergeAcross="${options.mergeAcross}"` : '';
+      return `<Cell ss:StyleID="${styleId}"${merge}><Data ss:Type="${type}">${xmlText(isNumber ? String(value) : value)}</Data></Cell>`;
+    }
+    function safeFileName(value) {
+      return String(value || 'report').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-');
+    }
+    function exportCurrentTimesheetExcel() {
+      const sheet = getSheet(activeSheetId);
+      if (!sheet) return alert('Сначала выберите табель.');
+      const project = getProject(sheet.projectId);
+      const month = sheetMonth(sheet);
+      const days = monthDayLabels(month);
+      const weekRanges = monthWeekRanges(month);
+      const totals = sheetTotals(sheet);
+      const dayTotals = sheetDayTotals(sheet);
+      const columnCount = days.length + 3;
+      const columns = `<Column ss:Width="145"/>${days.map(() => '<Column ss:Width="29"/>').join('')}<Column ss:Width="62"/><Column ss:Width="78"/>`;
+      const header = `<Row ss:Height="25">${styledExcelCell(project?.name || 'Табель', 'Title', { mergeAcross: columnCount - 1 })}</Row>
+        <Row ss:Height="20">${styledExcelCell(monthDisplay(month), 'Subtitle', { mergeAcross: columnCount - 1 })}</Row>
+        <Row ss:Height="22">${styledExcelCell('Недели', 'Header')}${weekRanges.map(range => styledExcelCell(range.label, 'Subtitle', { mergeAcross: range.end - range.start })).join('')}${styledExcelCell('', 'Header')}${styledExcelCell('', 'Header')}</Row>
+        <Row ss:Height="24">${styledExcelCell('Сотрудник', 'Header')}${days.map((day, index) => styledExcelCell(day, isWeekendDay(month, index) ? 'Weekend' : 'Header')).join('')}${styledExcelCell('Итого', 'Header')}${styledExcelCell('Зарплата', 'Header')}</Row>`;
+      const employeeRows = sheet.entries.map(entry => {
+        const person = getPerson(entry.personId);
+        const hours = days.map((_, index) => num(entry.hours?.[index]));
+        const totalHours = hours.reduce((sum, value) => sum + value, 0);
+        const payroll = totalHours * num(person?.rate);
+        return `<Row>${styledExcelCell(person?.name || '', 'Cell')}${hours.map((value, index) => styledExcelCell(value || '', isWeekendDay(month, index) ? 'Weekend' : 'Number')).join('')}${styledExcelCell(totalHours, 'Number')}${styledExcelCell(payroll, 'Money')}</Row>`;
+      }).join('');
+      let runningWeek = 0;
+      const weeklyCells = dayTotals.map((value, index) => {
+        runningWeek += value;
+        const date = new Date(`${monthStart(month).slice(0, 8)}${String(index + 1).padStart(2, '0')}T00:00:00`);
+        const isEnd = date.getDay() === 0 || index === dayTotals.length - 1;
+        const result = styledExcelCell(isEnd ? runningWeek : '', 'WeekTotal');
+        if (isEnd) runningWeek = 0;
+        return result;
+      }).join('');
+      const blankDays = days.map(() => styledExcelCell('', 'MonthTotal')).join('');
+      const footer = `<Row>${styledExcelCell('Итого по дням', 'DayTotal')}${dayTotals.map(value => styledExcelCell(value || '', 'DayTotal')).join('')}${styledExcelCell(totals.hours, 'DayTotal')}${styledExcelCell(totals.payroll, 'Money')}</Row>
+        <Row>${styledExcelCell('Итого по неделям', 'WeekTotal')}${weeklyCells}${styledExcelCell(totals.hours, 'WeekTotal')}${styledExcelCell('', 'WeekTotal')}</Row>
+        <Row>${styledExcelCell('Итого месяц', 'MonthTotal')}${blankDays}${styledExcelCell(totals.hours, 'MonthTotal')}${styledExcelCell(totals.payroll, 'Money')}</Row>`;
+      const worksheet = `<Worksheet ss:Name="${xmlAttr((project?.name || 'Табель').slice(0, 31))}"><Table>${columns}${header}${employeeRows}${footer}</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane><SplitVertical>1</SplitVertical><LeftColumnRightPane>1</LeftColumnRightPane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions></Worksheet>`;
+      downloadExcelXml(worksheet, `tabel-${safeFileName(project?.name)}-${month}.xls`);
+    }
+    function exportPeopleByProjectExcel() {
+      const rows = payrollRows().sort((a, b) => a.projectName.localeCompare(b.projectName, 'ru') || a.personName.localeCompare(b.personName, 'ru'));
+      if (!rows.length) return alert('Нет данных сотрудников для выгрузки.');
+      const grouped = new Map();
+      rows.forEach(row => {
+        const key = `${row.projectId}|${row.personId}`;
+        const current = grouped.get(key) || { ...row, hours: 0, payroll: 0, revenue: 0, profit: 0 };
+        current.hours += row.hours;
+        current.payroll += row.payroll;
+        current.revenue += row.revenue;
+        current.profit += row.profit;
+        grouped.set(key, current);
+      });
+      const records = [...grouped.values()].sort((a, b) => a.projectName.localeCompare(b.projectName, 'ru') || a.personName.localeCompare(b.personName, 'ru'));
+      let currentProject = '';
+      let projectHours = 0;
+      let projectPayroll = 0;
+      const body = [];
+      const pushProjectTotal = () => {
+        if (!currentProject) return;
+        body.push(`<Row>${styledExcelCell(`Итого ${currentProject}`, 'MonthTotal', { mergeAcross: 3 })}${styledExcelCell(projectHours, 'MonthTotal')}${styledExcelCell('', 'MonthTotal')}${styledExcelCell(projectPayroll, 'Money')}</Row>`);
+      };
+      records.forEach(row => {
+        if (row.projectName !== currentProject) {
+          pushProjectTotal();
+          currentProject = row.projectName;
+          projectHours = 0;
+          projectPayroll = 0;
+          body.push(`<Row ss:Height="22">${styledExcelCell(currentProject, 'Project', { mergeAcross: 6 })}</Row>`);
+          body.push(`<Row>${['Сотрудник', 'Юр. лицо', 'Счёт', 'Владелец счёта', 'Часы', 'Ставка', 'К выплате'].map(value => styledExcelCell(value, 'Header')).join('')}</Row>`);
+        }
+        const person = getPerson(row.personId);
+        projectHours += row.hours;
+        projectPayroll += row.payroll;
+        body.push(`<Row>${styledExcelCell(row.personName, 'Cell')}${styledExcelCell(person?.legalEntity || '', 'Cell')}${styledExcelCell(person?.bankAccount || '', 'Cell')}${styledExcelCell(accountOwnerName(person), 'Cell')}${styledExcelCell(row.hours, 'Number')}${styledExcelCell(num(row.rate), 'Money')}${styledExcelCell(row.payroll, 'Money')}</Row>`);
+      });
+      pushProjectTotal();
+      const columns = '<Column ss:Width="170"/><Column ss:Width="95"/><Column ss:Width="190"/><Column ss:Width="150"/><Column ss:Width="65"/><Column ss:Width="65"/><Column ss:Width="85"/>';
+      const worksheet = `<Worksheet ss:Name="Сотрудники по объектам"><Table>${columns}<Row ss:Height="26">${styledExcelCell('Отчёт по сотрудникам с сортировкой по объектам', 'Title', { mergeAcross: 6 })}</Row>${body.join('')}</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions></Worksheet>`;
+      downloadExcelXml(worksheet, `sotrudniki-po-obektam-${today()}.xls`);
+    }
+    function excelSheet(sheet) {
+      return `<Worksheet ss:Name="${xmlAttr(sheet.name.slice(0, 31))}"><Table>${sheet.rows.map((row, rowIndex) => `<Row>${row.map(cell => excelCell(cell, rowIndex === 0)).join('')}</Row>`).join('')}</Table></Worksheet>`;
+    }
+    function excelCell(value, header) {
+      const isNumber = typeof value === 'number' && Number.isFinite(value);
+      const type = isNumber ? 'Number' : 'String';
+      const style = header ? ' ss:StyleID="Header"' : '';
+      return `<Cell${style}><Data ss:Type="${type}">${xmlText(isNumber ? String(value) : value)}</Data></Cell>`;
+    }
+    function xmlText(value) {
+      return String(value ?? '').replace(/[<>&]/g, char => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[char]));
+    }
+    function xmlAttr(value) {
+      return xmlText(value).replace(/"/g, '&quot;');
+    }
+    function projectExportRows() {
+      return [
+        ['Объект', 'Клиент / адрес', 'Тариф компании', 'Часы', 'Доход', 'Зарплата', 'Прибыль', 'Счета выставлено', 'Счета оплачено', 'Долг'],
+        ...state.projects.map(project => {
+          const stats = projectStats(project.id);
+          return [project.name, project.client || '', num(project.billRate), stats.hours, stats.revenue, stats.payroll, stats.profit, stats.invoiced, stats.paid, stats.unpaid];
+        })
+      ];
+    }
+    function payrollExportRows() {
+      return [
+        ['Период', 'Сотрудник', 'Объект', 'Часы', 'Ставка', 'К выплате', 'Доход компании', 'Прибыль'],
+        ...payrollRows().map(row => [periodLabel(row), row.personName, row.projectName, row.hours, num(row.rate), row.payroll, row.revenue, row.profit])
+      ];
+    }
+    function timesheetExportRows() {
+      const dayHeaders = Array.from({ length: 31 }, (_, index) => `День ${index + 1}`);
+      const rows = [['Месяц', 'Объект', 'Сотрудник', ...dayHeaders, 'Итого часов', 'Зарплата', 'Доход компании', 'Прибыль', 'Комментарий', 'Фото, шт.']];
+      state.timesheets.forEach(sheet => {
+        const project = getProject(sheet.projectId);
+        const dayCount = monthDayCount(sheetMonth(sheet));
+        sheet.entries.forEach(entry => {
+          const person = getPerson(entry.personId);
+          if (!person) return;
+          const hours = Array.from({ length: 31 }, (_, index) => index < dayCount ? num(entry.hours?.[index]) : '');
+          const totalHours = hours.reduce((sum, value) => sum + num(value), 0);
+          const payroll = totalHours * num(person.rate);
+          const revenue = totalHours * num(project?.billRate);
+          rows.push([monthDisplay(sheetMonth(sheet)), project?.name || '', person.name, ...hours, totalHours, payroll, revenue, revenue - payroll, sheet.notes || '', (sheet.photos || []).length]);
+        });
+      });
+      return rows;
+    }
+    function invoiceExportRows() {
+      return [
+        ['Номер', 'Объект', 'Период с', 'Период по', 'Дата счета', 'Срок оплаты', 'Сумма', 'Статус', 'Заметки'],
+        ...state.invoices.map(invoice => {
+          const project = getProject(invoice.projectId);
+          return [invoice.number || '', project?.name || '', invoice.periodFrom || '', invoice.periodTo || '', invoice.date || '', invoice.dueDate || '', num(invoice.amount), invoiceStatusText(invoice), invoice.notes || ''];
+        })
+      ];
+    }
+    function monthlyHoursExportRows() {
+      return [
+        ['Месяц', 'Сотрудник', 'Объект', 'Часы', 'Ставка', 'К выплате', 'Доход компании', 'Прибыль', 'Комментарий'],
+        ...state.monthlyHours.map(item => {
+          const person = getPerson(item.personId);
+          const project = getProject(item.projectId);
+          const hours = num(item.hours);
+          const payroll = hours * num(person?.rate);
+          const revenue = hours * num(project?.billRate);
+          return [monthName(monthDateFromInput(item.month)), person?.name || '', project?.name || '', hours, num(person?.rate), payroll, revenue, revenue - payroll, item.notes || ''];
+        })
+      ];
+    }
+    function peopleExportRows() {
+      return [
+        ['Сотрудник', 'Юридическое лицо', 'Ставка', 'Валюта', 'Счет для зарплаты', 'Счет принадлежит', 'Владелец счета', 'Заметки'],
+        ...state.people.map(person => [person.name, person.legalEntity || '', num(person.rate), person.currency || '', person.bankAccount || '', person.accountOwnerType === 'other' ? 'Другому человеку' : 'Сотруднику', accountOwnerName(person), person.notes || ''])
+      ];
+    }
+    function projectsExportRows() {
+      return [
+        ['Объект', 'Статус', 'Тариф компании', 'Валюта', 'Клиент / адрес', 'Заметки'],
+        ...state.projects.map(project => [project.name, project.completed ? 'Завершён' : 'Активен', num(project.billRate), project.currency || '', project.client || '', project.notes || ''])
+      ];
+    }
+    function importJson(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = event => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (!Array.isArray(imported.people) || !Array.isArray(imported.projects)) throw new Error('bad data');
+          stateLoadFailed = false;
+          state = normalizeState(imported);
+          activeSheetId = state.timesheets?.[0]?.id || null;
+          render();
+        } catch {
+          alert('Не удалось загрузить файл. Проверьте, что это экспорт из этой программы.');
+        }
+      };
+      reader.readAsText(file);
+    }
+    byId('tabs').addEventListener('click', event => {
+      const button = event.target.closest('button[data-view]');
+      if (!button) return;
+      document.querySelectorAll('nav button').forEach(item => item.classList.toggle('active', item === button));
+      document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === button.dataset.view));
+    });
+    byId('dashboardMonth').addEventListener('change', renderDashboard);
+    byId('dashboardProject').addEventListener('change', renderDashboard);
+    byId('dashboardClearBtn').addEventListener('click', () => {
+      byId('dashboardMonth').value = '';
+      byId('dashboardProject').value = '';
+      renderDashboard();
+    });
+    byId('addPersonBtn').addEventListener('click', addPerson);
+    byId('addBulkPeopleBtn').addEventListener('click', addBulkPeople);
+    byId('peopleFilter').addEventListener('input', renderPeople);
+    byId('peopleTable').addEventListener('click', event => {
+      const button = event.target.closest('button[data-save-person-id]');
+      if (button) saveInlinePerson(button.dataset.savePersonId);
+    });
+    byId('peopleTable').addEventListener('change', event => {
+      const field = event.target.closest('[data-person-id][data-person-field]');
+      if (field) saveInlinePerson(field.dataset.personId);
+    });
+    byId('addProjectBtn').addEventListener('click', addProject);
+    byId('projectsTable').addEventListener('click', event => {
+      const button = event.target.closest('button[data-save-project-rate]');
+      if (button) saveProjectRate(button.dataset.saveProjectRate);
+    });
+    byId('projectsTable').addEventListener('change', event => {
+      const input = event.target.closest('input[data-project-rate]');
+      if (input) saveProjectRate(input.dataset.projectRate);
+    });
+    byId('addInvoiceBtn').addEventListener('click', addInvoice);
+    byId('invoiceDate').addEventListener('change', () => {
+      if (byId('invoicePeriodFrom').value || byId('invoicePeriodTo').value) return;
+      const month = (byId('invoiceDate').value || today()).slice(0, 7);
+      byId('invoicePeriodFrom').value = monthStart(month);
+      byId('invoicePeriodTo').value = `${month}-${String(monthDayCount(month)).padStart(2, '0')}`;
+    });
+    byId('addMonthlyHoursBtn').addEventListener('click', addMonthlyHours);
+    byId('settlementMonth').addEventListener('change', renderSettlements);
+    byId('settlementSearch').addEventListener('input', renderSettlements);
+    byId('inboxRefreshBtn').addEventListener('click', async () => {
+      await loadCloudState();
+      render({ skipSave: true });
+    });
+    byId('newSheetBtn').addEventListener('click', startNewSheet);
+    byId('cancelNewSheetBtn').addEventListener('click', cancelNewSheet);
+    byId('saveSheetMetaBtn').addEventListener('click', saveSheetMeta);
+    byId('saveTimesheetBtn').addEventListener('click', saveTimesheet);
+    byId('exportCurrentSheetBtn').addEventListener('click', exportCurrentTimesheetExcel);
+    byId('exportPeopleByProjectBtn').addEventListener('click', exportPeopleByProjectExcel);
+    byId('deleteSheetBtn').addEventListener('click', deleteSheet);
+    byId('copyPrevWeekBtn').addEventListener('click', copyPrevWeek);
+    byId('hoursTable').addEventListener('keydown', handleHourKey, true);
+    byId('hoursTable').addEventListener('keydown', handleHoursCopyPaste);
+    byId('hoursTable').addEventListener('copy', copyHoursSelection);
+    byId('hoursTable').addEventListener('paste', event => {
+      if (!event.target?.classList?.contains('hours-input')) return;
+      event.preventDefault();
+      pasteHoursGrid(parseHoursClipboard(event.clipboardData?.getData('text/plain')) || copiedHoursGrid);
+    });
+    byId('hoursTable').addEventListener('click', event => {
+      if (event.target?.classList?.contains('hours-input')) selectHourCell(event.target, event);
+      const dayHeader = event.target.closest?.('[data-day-col]');
+      if (dayHeader) selectHourColumn(num(dayHeader.dataset.dayCol));
+    });
+    byId('hoursTable').addEventListener('mousedown', event => beginHourRange(event.target, event));
+    byId('hoursTable').addEventListener('mouseover', event => extendHourRange(event.target));
+    document.addEventListener('wheel', event => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      applyUiZoom(uiZoom + (event.deltaY < 0 ? UI_ZOOM_STEP : -UI_ZOOM_STEP));
+    }, { passive: false });
+    document.addEventListener('keydown', event => {
+      if (!(event.ctrlKey || event.metaKey) || event.key !== '0') return;
+      event.preventDefault();
+      applyUiZoom(1);
+    });
+    document.addEventListener('keydown', event => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      const activeView = document.querySelector('.view.active')?.id;
+      if (activeView === 'timesheets') {
+        saveTimesheet();
+      } else {
+        saveState();
+      }
+    });
+    document.addEventListener('mousedown', event => beginTableSumSelection(event.target, event));
+    document.addEventListener('mouseover', event => extendTableSumSelection(event.target));
+    document.addEventListener('mouseup', () => {
+      isSelectingHours = false;
+      isSelectingTableSum = false;
+    });
+    byId('selectHourRowBtn').addEventListener('click', selectActiveHourRow);
+    byId('copyHoursBtn').addEventListener('click', () => copyHoursSelection());
+    byId('pasteHoursBtn').addEventListener('click', () => pasteHoursGrid(copiedHoursGrid));
+    byId('mobilePrevWeekBtn').addEventListener('click', () => changeMobileWeek(-1));
+    byId('mobileNextWeekBtn').addEventListener('click', () => changeMobileWeek(1));
+    byId('sheetPeopleSearch').addEventListener('input', () => renderSheetPeopleList(getSheet(activeSheetId)));
+    byId('sheetPeopleList').addEventListener('change', event => {
+      if (event.target?.classList?.contains('sheet-person-check')) applySheetPeopleSelection();
+    });
+    byId('sheetProject').addEventListener('change', () => {
+      if (!creatingSheet) return;
+      usePreviousSheetPeople(byId('sheetProject').value);
+      renderSheetPeopleList(null);
+    });
+    byId('selectAllSheetPeopleBtn').addEventListener('click', () => {
+      document.querySelectorAll('.sheet-person-check').forEach(input => input.checked = true);
+      applySheetPeopleSelection();
+    });
+    byId('clearSheetPeopleBtn').addEventListener('click', () => {
+      document.querySelectorAll('.sheet-person-check').forEach(input => input.checked = false);
+      applySheetPeopleSelection();
+    });
+    byId('exportJsonBtn').addEventListener('click', exportJson);
+    byId('exportExcelBtn').addEventListener('click', exportExcel);
+    byId('importJsonInput').addEventListener('change', event => importJson(event.target.files[0]));
+    byId('pushLocalToCloudBtn').addEventListener('click', pushLocalStateToCloud);
+    byId('printBtn').addEventListener('click', () => window.print());
+    byId('printEmployeeReportBtn').addEventListener('click', printEmployeeReport);
+    byId('copyPayrollReportBtn').addEventListener('click', copyPayrollReport);
+    byId('printPersonSearch').addEventListener('input', () => selectBySearch('printPersonSearch', 'printReportPerson', peopleAlphabetically(), person => person.name));
+    byId('printProjectSearch').addEventListener('input', () => selectBySearch('printProjectSearch', 'printReportProject', projectsAlphabetically(), project => project.name));
+    byId('printReportMonth').addEventListener('change', renderEmployeeReport);
+    byId('printReportPerson').addEventListener('change', () => {
+      if (byId('printReportPerson').value) {
+        byId('printReportProject').value = '';
+        byId('printProjectSearch').value = '';
+      }
+      renderEmployeeReport();
+    });
+    byId('printReportProject').addEventListener('change', () => {
+      if (byId('printReportProject').value) {
+        byId('printReportPerson').value = '';
+        byId('printPersonSearch').value = '';
+      }
+      renderEmployeeReport();
+    });
+    byId('objectDaysMonth').addEventListener('change', renderObjectDays);
+    byId('payrollSearch').addEventListener('input', () => {
+      selectBySearch('payrollSearch', 'payrollPerson', peopleAlphabetically(), person => person.name);
+      renderPayroll();
+    });
+    byId('payrollProjectSearch').addEventListener('input', () => selectBySearch('payrollProjectSearch', 'payrollProject', projectsAlphabetically(), project => project.name));
+    ['payrollFrom', 'payrollTo'].forEach(id => byId(id).addEventListener('change', renderPayroll));
+    byId('payrollPerson').addEventListener('change', () => {
+      if (byId('payrollPerson').value) {
+        byId('payrollProject').value = '';
+        byId('payrollProjectSearch').value = '';
+      }
+      renderPayroll();
+    });
+    byId('payrollProject').addEventListener('change', () => {
+      if (byId('payrollProject').value) {
+        byId('payrollPerson').value = '';
+        byId('payrollSearch').value = '';
+      }
+      renderPayroll();
+    });
+    byId('sheetPhoto').addEventListener('change', event => {
+      const files = Array.from(event.target.files || []);
+      const sheet = getSheet(activeSheetId);
+      if (!files.length || !sheet) return;
+      Promise.all(files.map(file => new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = loadEvent => resolve(loadEvent.target.result);
+        reader.readAsDataURL(file);
+      }))).then(images => {
+        sheet.photos = [...(sheet.photos || []), ...images];
+        sheet.photo = sheet.photos[0] || '';
+        byId('sheetPhoto').value = '';
+        render();
+      });
+    });
+    byId('photoPreview').addEventListener('click', event => {
+      const button = event.target.closest('button[data-photo-index]');
+      if (!button) return;
+      deleteSheetPhoto(num(button.dataset.photoIndex));
+    });
+    window.selectSheet = selectSheet;
+    window.updateHour = updateHour;
+    window.handleHourKey = handleHourKey;
+    window.copyHoursSelection = copyHoursSelection;
+    window.pasteHoursGrid = pasteHoursGrid;
+    window.editPerson = editPerson;
+    window.saveInlinePerson = saveInlinePerson;
+    window.deletePerson = deletePerson;
+    window.deleteMonthlyHours = deleteMonthlyHours;
+    window.deleteSheetPhoto = deleteSheetPhoto;
+    window.deleteProject = deleteProject;
+    window.deleteInvoice = deleteInvoice;
+    window.markInvoicePaid = markInvoicePaid;
+    window.applyTelegramIncoming = applyTelegramIncoming;
+    window.rejectTelegramIncoming = rejectTelegramIncoming;
+    window.configureTelegramChat = configureTelegramChat;
+    byId('invoiceDate').value = today();
+    byId('invoicePeriodFrom').value = monthStart(today().slice(0, 7));
+    byId('invoicePeriodTo').value = `${today().slice(0, 7)}-${String(monthDayCount(today().slice(0, 7))).padStart(2, '0')}`;
+    byId('monthlyMonth').value = today().slice(0, 7);
+    byId('objectDaysMonth').value = today().slice(0, 7);
+    byId('printReportMonth').value = today().slice(0, 7);
+    window.matchMedia('(max-width: 700px)').addEventListener('change', () => {
+      const sheet = getSheet(activeSheetId);
+      if (sheet) {
+        mobileWeekIndex = preferredMobileWeekIndex(sheetMonth(sheet));
+        renderHours();
+      }
+    });
+    async function initApp() {
+      await loadCloudState();
+      const initialSheet = getSheet(activeSheetId);
+      if (initialSheet) mobileWeekIndex = preferredMobileWeekIndex(sheetMonth(initialSheet));
+      render({ skipSave: true });
+    }
+    initApp();
+  </script>
+</body>
+</html>
