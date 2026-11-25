@@ -11,14 +11,6 @@ services:
         value: "22"
       - key: DATA_DIR
         value: "/var/data"
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_WEBHOOK_SECRET
-        generateValue: true
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: PUBLIC_BASE_URL
-        sync: false
     disk:
       name: tabel-data
       mountPath: "/var/data"
