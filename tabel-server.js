@@ -9,6 +9,7 @@ const ROOT = __dirname;
 const APP_FILE = path.join(ROOT, 'tabel-zarplata-app.html');
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'tabel-state.json');
+const SEED_STATE_FILE = path.join(ROOT, 'data', 'tabel-state.json');
 const BACKUP_FILE = path.join(DATA_DIR, 'tabel-state.backup.json');
 const HISTORY_DIR = path.join(DATA_DIR, 'history');
 const TEMP_FILE = path.join(DATA_DIR, 'tabel-state.tmp.json');
@@ -46,6 +47,13 @@ function readBody(req) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function ensureSeedState() {
+  if (fs.existsSync(STATE_FILE) || !fs.existsSync(SEED_STATE_FILE)) return;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.copyFileSync(SEED_STATE_FILE, STATE_FILE);
+  console.log('Initialized persistent data from the packaged state');
 }
 
 function totalHours(state) {
@@ -109,6 +117,7 @@ function stampState(state, previousRevision) {
 }
 
 function readState() {
+  ensureSeedState();
   if (!fs.existsSync(STATE_FILE)) return { empty: true, state: null, revision: null, stats: stateStats(null) };
   const state = readJson(STATE_FILE);
   return { empty: false, state, revision: revisionOf(state), savedAt: state._savedAt || null, stats: stateStats(state) };
@@ -174,6 +183,7 @@ function validateIncomingState(current, incoming, clientBaseRevision) {
 }
 
 function writeState(payload) {
+  ensureSeedState();
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
   const incoming = cleanClientState(payload);
@@ -200,6 +210,7 @@ function serveFile(res, filePath, type) {
 }
 
 function writeSystemState(nextState) {
+  ensureSeedState();
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
   const next = stampState(nextState, revisionOf(current));
@@ -229,6 +240,7 @@ function messageKind(state, chatId) {
 function appendTelegramIncoming(update) {
   const message = update.message || update.channel_post;
   if (!message || !message.chat) return { ignored: true };
+  ensureSeedState();
   const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : { people: [], projects: [], timesheets: [], invoices: [], monthlyHours: [], settlements: [], advances: [], expenses: [], telegram: { chats: [], inbox: [] } };
   current.telegram = current.telegram && typeof current.telegram === 'object' ? current.telegram : {};
   current.telegram.chats = Array.isArray(current.telegram.chats) ? current.telegram.chats : [];
