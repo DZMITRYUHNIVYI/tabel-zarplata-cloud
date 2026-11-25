@@ -14,7 +14,9 @@ const HISTORY_DIR = path.join(DATA_DIR, 'history');
 const TEMP_FILE = path.join(DATA_DIR, 'tabel-state.tmp.json');
 const MAX_BODY_SIZE = 500 * 1024 * 1024;
 const HISTORY_KEEP = 500;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
 
 function send(res, status, body, type = 'text/plain; charset=utf-8') {
   res.writeHead(status, {
@@ -256,6 +258,30 @@ function appendTelegramIncoming(update) {
   return { record };
 }
 
+async function registerTelegramWebhook() {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_WEBHOOK_SECRET || !PUBLIC_BASE_URL) {
+    console.log('Telegram webhook: not configured');
+    return;
+  }
+  const webhookUrl = `${PUBLIC_BASE_URL}/api/telegram/webhook`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: webhookUrl,
+        secret_token: TELEGRAM_WEBHOOK_SECRET,
+        allowed_updates: ['message', 'channel_post']
+      })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.description || 'Telegram rejected the webhook');
+    console.log(`Telegram webhook: ${webhookUrl}`);
+  } catch (error) {
+    console.error(`Telegram webhook setup failed: ${error.message}`);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -301,4 +327,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Tabel app server: http://localhost:${PORT}/tabel-zarplata-app.html`);
+  void registerTelegramWebhook();
 });
