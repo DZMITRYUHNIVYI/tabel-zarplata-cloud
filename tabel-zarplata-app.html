@@ -1693,8 +1693,11 @@
     const UI_ZOOM_MIN = 0.75;
     const UI_ZOOM_MAX = 1.5;
     const UI_ZOOM_STEP = 0.05;
-    const CLOUD_API = `${location.origin}/api/state`;
-    const isCloudMode = location.protocol === 'http:' || location.protocol === 'https:';
+    const DEFAULT_CLOUD_API = 'https://tabel-zarplata-app.onrender.com/api/state';
+    const CLOUD_API = location.protocol === 'file:'
+      ? localStorage.getItem('tabel-zarplata-cloud-api') || DEFAULT_CLOUD_API
+      : `${location.origin}/api/state`;
+    const isCloudMode = location.protocol === 'http:' || location.protocol === 'https:' || location.protocol === 'file:';
     const legalEntities = ['V&V', 'ZGROUP', 'HOLZPOL', 'HAMMER BAU', 'URUS', 'НЕ ОФОРМЛЕН'];
     const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
     const today = () => new Date().toISOString().slice(0, 10);
