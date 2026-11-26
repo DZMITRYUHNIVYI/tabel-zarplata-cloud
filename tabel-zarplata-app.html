@@ -2788,7 +2788,15 @@
       const sourceLink = item.source?.localFile ? `<a class="button" target="_blank" rel="noopener" href="${CLOUD_API.replace(/\/api\/state$/, '')}/api/telegram/source/${encodeURIComponent(item.id)}">Открыть источник</a>` : '';
       const isTimesheet = item.kind === 'timesheet';
       const companyType = item.kind === 'company_funds' ? `<div><label>Тип операции</label><select id="telegramReviewDocumentType"><option value="unknown" ${draft.documentType === 'unknown' ? 'selected' : ''}>Выберите тип</option><option value="company_advance" ${draft.documentType === 'company_advance' ? 'selected' : ''}>Выдача рабочих денег</option><option value="receipt" ${draft.documentType === 'receipt' ? 'selected' : ''}>Чек по рабочим деньгам</option></select></div>` : '';
-      target.innerHTML = `<div class="panel"><div class="panel-head"><h3>Проверка: ${escapeHtml(item.source?.chatTitle || 'Telegram')}</h3><div class="toolbar">${sourceLink}<button onclick="closeTelegramReview()">Закрыть</button></div></div><div class="panel-body"><div class="grid ${isTimesheet ? 'two' : 'three'}"><div><label>Сотрудник</label><select id="telegramReviewPerson">${personOptions}</select></div><div><label>Объект</label><select id="telegramReviewProject">${projectOptions}</select></div><div><label>Дата</label><input id="telegramReviewDate" type="date" value="${escapeHtml(draft.date || today())}"></div>${companyType}${isTimesheet ? `<div><label>Месяц табеля</label><input id="telegramReviewMonth" type="month" value="${escapeHtml(draft.month || '')}"></div>` : `<div><label>Сумма</label><input id="telegramReviewAmount" type="number" min="0" step="0.01" value="${num(draft.amount)}"></div><div><label>Категория</label><input id="telegramReviewCategory" value="${escapeHtml(draft.category || 'Другое')}"></div>`}</div><div style="height:12px"></div><label>Комментарий</label><textarea id="telegramReviewNotes" rows="2">${escapeHtml(draft.notes || draft.summary || '')}</textarea>${isTimesheet ? `<p class="hint">Для табеля сначала выберите объект и месяц. Если ИИ не прочитал часы, откройте источник и внесите часы в табель вручную: исходное сообщение и файл сохраняются.</p>` : ''}<div class="toolbar" style="margin-top:12px"><button class="good" onclick="saveTelegramReview('${item.id}')">Подтвердить данные</button></div></div></div>`;
+      const recognizedRows = (draft.entries || []).map(entry => {
+        const person = getPerson(entry.personId);
+        const total = (entry.hours || []).reduce((sum, value) => sum + num(value), 0);
+        return `<tr><td>${escapeHtml(person?.name || entry.personName || 'Не определён')}</td><td>${fmt(total)}</td></tr>`;
+      }).join('');
+      const timesheetDetails = isTimesheet
+        ? `<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Распознанный сотрудник</th><th>Часы</th></tr></thead><tbody>${recognizedRows || '<tr><td colspan="2" class="empty">ИИ не нашёл строк с часами</td></tr>'}</tbody></table></div><p class="hint">Выберите объект и месяц. После подтверждения часы будут добавлены в его месячный табель; уже заполненные дни не сотрутся.</p>`
+        : '';
+      target.innerHTML = `<div class="panel"><div class="panel-head"><h3>Проверка: ${escapeHtml(item.source?.chatTitle || 'Telegram')}</h3><div class="toolbar">${sourceLink}<button onclick="closeTelegramReview()">Закрыть</button></div></div><div class="panel-body"><div class="grid ${isTimesheet ? 'two' : 'three'}">${isTimesheet ? '' : `<div><label>Сотрудник</label><select id="telegramReviewPerson">${personOptions}</select></div>`}<div><label>Объект</label><select id="telegramReviewProject">${projectOptions}</select></div>${isTimesheet ? `<div><label>Месяц табеля</label><input id="telegramReviewMonth" type="month" value="${escapeHtml(draft.month || '')}"></div>` : `<div><label>Дата</label><input id="telegramReviewDate" type="date" value="${escapeHtml(draft.date || today())}"></div>${companyType}<div><label>Сумма</label><input id="telegramReviewAmount" type="number" min="0" step="0.01" value="${num(draft.amount)}"></div><div><label>Категория</label><input id="telegramReviewCategory" value="${escapeHtml(draft.category || 'Другое')}"></div>`}</div><div style="height:12px"></div><label>Комментарий</label><textarea id="telegramReviewNotes" rows="2">${escapeHtml(draft.notes || draft.summary || '')}</textarea>${timesheetDetails}<div class="toolbar" style="margin-top:12px"><button class="good" onclick="saveTelegramReview('${item.id}')">${isTimesheet ? 'Подтвердить и внести в табель' : 'Подтвердить данные'}</button></div></div></div>`;
     }
     function openTelegramReview(id) {
       activeInboxReviewId = id;
@@ -2805,8 +2813,10 @@
       const draft = item.ai = item.ai || {};
       const person = getPerson(byId('telegramReviewPerson')?.value);
       const project = getProject(byId('telegramReviewProject')?.value);
-      draft.personId = person?.id || '';
-      draft.personName = person?.name || draft.personName || '';
+      if (item.kind !== 'timesheet') {
+        draft.personId = person?.id || '';
+        draft.personName = person?.name || draft.personName || '';
+      }
       draft.projectId = project?.id || '';
       draft.projectName = project?.name || draft.projectName || '';
       draft.date = byId('telegramReviewDate')?.value || draft.date || today();
@@ -2823,6 +2833,10 @@
       item.status = canUse ? 'ready' : 'needs_review';
       delete item.error;
       saveState();
+      if (item.kind === 'timesheet' && canUse) {
+        applyTelegramIncoming(id);
+        return;
+      }
       renderInbox();
     }
     function applyTelegramIncoming(id) {
@@ -2837,13 +2851,6 @@
           renderInbox();
           return;
         }
-        const duplicate = state.timesheets.find(sheet => sheet.projectId === draft.projectId && sheetMonth(sheet) === draft.month);
-        if (duplicate) {
-          item.status = 'needs_review';
-          item.error = 'Табель за этот объект и месяц уже существует.';
-          renderInbox();
-          return;
-        }
         const dayCount = monthDayCount(draft.month);
         const entries = draft.entries.filter(entry => getPerson(entry.personId)).map(entry => ({
           personId: entry.personId,
@@ -2855,7 +2862,27 @@
           renderInbox();
           return;
         }
-        state.timesheets.push({ id: uid(), projectId: draft.projectId, month: draft.month, weekStart: monthStart(draft.month), notes: `Telegram: ${item.source?.chatTitle || ''}`, photo: '', photos: [], entries, sourceIncomingId: item.id, status: 'draft' });
+        const duplicate = state.timesheets.find(sheet => sheet.projectId === draft.projectId && sheetMonth(sheet) === draft.month);
+        if (duplicate) {
+          entries.forEach(incoming => {
+            let target = duplicate.entries.find(entry => entry.personId === incoming.personId);
+            if (!target) {
+              target = { personId: incoming.personId, hours: Array.from({ length: dayCount }, () => 0) };
+              duplicate.entries.push(target);
+            }
+            target.hours = Array.from({ length: dayCount }, (_, index) => {
+              const incomingHours = num(incoming.hours?.[index]);
+              return incomingHours > 0 ? incomingHours : num(target.hours?.[index]);
+            });
+          });
+          duplicate.notes = [duplicate.notes, `Telegram: ${item.source?.chatTitle || ''}`].filter(Boolean).join('\n');
+          duplicate.sourceIncomingIds = [...new Set([...(duplicate.sourceIncomingIds || []), item.id])];
+          activeSheetId = duplicate.id;
+        } else {
+          const created = { id: uid(), projectId: draft.projectId, month: draft.month, weekStart: monthStart(draft.month), notes: `Telegram: ${item.source?.chatTitle || ''}`, photo: '', photos: [], entries, sourceIncomingId: item.id, sourceIncomingIds: [item.id], status: 'draft' };
+          state.timesheets.push(created);
+          activeSheetId = created.id;
+        }
       } else if (['advance', 'salary_advance', 'company_advance'].includes(processedKind)) {
         if (!draft.personId || !draft.amount) return alert('Перед внесением ИИ должен определить сотрудника и сумму.');
         const advanceDate = draft.date || today();
