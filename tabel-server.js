@@ -417,19 +417,28 @@ async function askOpenAi(record, attachment) {
     else content.push({ type: 'input_file', filename: record.source?.fileName || 'telegram-file', file_data: dataUrl });
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  let timedOut = false;
+  let timer;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new Error('ИИ не ответил вовремя. Документ можно обработать повторно.'));
+    }, OPENAI_TIMEOUT_MS);
+  });
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const request = fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify({ model: OPENAI_MODEL, input: [{ role: 'user', content }], temperature: 0 }),
       signal: controller.signal,
     });
+    const response = await Promise.race([request, timeout]);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error?.message || 'OpenAI не принял документ.');
     return jsonFromAi(responseText(payload));
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error('ИИ не ответил вовремя. Документ можно обработать повторно.');
+    if (timedOut || error.name === 'AbortError') throw new Error('ИИ не ответил вовремя. Документ можно обработать повторно.');
     throw error;
   } finally {
     clearTimeout(timer);
