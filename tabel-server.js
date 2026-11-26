@@ -255,13 +255,37 @@ function wordSimilarity(left, right) {
   return (2 * common) / (a.length + b.length);
 }
 
+function editDistance(left, right) {
+  const a = compactName(left).replace(/ /g, '');
+  const b = compactName(right).replace(/ /g, '');
+  if (!a || !b) return Math.max(a.length, b.length);
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const saved = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = saved;
+    }
+  }
+  return row[b.length];
+}
+
+function nameSimilarity(left, right) {
+  const a = compactName(left).replace(/ /g, '');
+  const b = compactName(right).replace(/ /g, '');
+  const spelling = a && b ? 1 - editDistance(a, b) / Math.max(a.length, b.length) : 0;
+  return Math.max(wordSimilarity(left, right), spelling);
+}
+
 function matchPerson(people, name) {
   const needle = compactName(name);
   if (!needle) return null;
   const exact = people.find(person => compactName(person.name) === needle);
   if (exact) return { person: exact, confidence: 1 };
   const ranked = people
-    .map(person => ({ person, confidence: wordSimilarity(person.name, name) }))
+    .map(person => ({ person, confidence: nameSimilarity(person.name, name) }))
     .sort((a, b) => b.confidence - a.confidence);
   return ranked[0]?.confidence >= 0.8 ? ranked[0] : null;
 }
@@ -272,7 +296,7 @@ function matchProject(projects, name) {
   const exact = projects.find(project => compactName(project.name) === needle);
   if (exact) return { project: exact, confidence: 1 };
   const ranked = projects
-    .map(project => ({ project, confidence: wordSimilarity(project.name, name) }))
+    .map(project => ({ project, confidence: nameSimilarity(project.name, name) }))
     .sort((a, b) => b.confidence - a.confidence);
   return ranked[0]?.confidence >= 0.75 ? ranked[0] : null;
 }
@@ -293,6 +317,27 @@ function nextMonth(date) {
 
 function receivedDate(record) {
   return String(record.receivedAt || new Date().toISOString()).slice(0, 10);
+}
+
+function isoWeekStart(year, week) {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const day = jan4.getUTCDay() || 7;
+  const start = new Date(jan4);
+  start.setUTCDate(jan4.getUTCDate() - day + 1 + (week - 1) * 7);
+  return start;
+}
+
+function inferredMonth(analysis, fallbackDate) {
+  const direct = validMonth(analysis.month);
+  if (direct) return direct;
+  const periodStart = validDate(analysis.periodStart, '');
+  if (periodStart) return periodStart.slice(0, 7);
+  const week = Number(analysis.weekNumber);
+  if (Number.isInteger(week) && week >= 1 && week <= 53) {
+    const year = Number(String(fallbackDate).slice(0, 4)) || new Date().getUTCFullYear();
+    return isoWeekStart(year, week).toISOString().slice(0, 7);
+  }
+  return '';
 }
 
 async function downloadTelegramAttachment(record) {
@@ -335,7 +380,10 @@ function jsonFromAi(text) {
 
 function aiInstructions(record) {
   const purpose = record.kind;
-  return `Ты извлекаешь данные для программы учёта рабочих часов и выплат. Язык документа может быть русским, немецким, польским, украинским или английским.\n\nТип входящего чата: ${purpose}.\n\nВерни ТОЛЬКО корректный JSON без Markdown. Используй поля:\n{\n  "documentType": "timesheet|salary_advance|company_advance|receipt|compensation|unknown",\n  "confidence": 0.0,\n  "summary": "кратко по-русски",\n  "projectName": "название объекта или пустая строка",\n  "month": "YYYY-MM или пустая строка",\n  "date": "YYYY-MM-DD или пустая строка",\n  "personName": "ФАМИЛИЯ ИМЯ или пустая строка",\n  "amount": 0,\n  "currency": "EUR",\n  "category": "топливо|инструмент|материалы|билет|другое",\n  "notes": "что куплено или за что деньги",\n  "entries": [{"personName":"ФАМИЛИЯ ИМЯ", "dailyHours":[{"day":1,"hours":8}]}],\n  "excludedPeople": ["люди в документе, которых нельзя уверенно сопоставить"]\n}\n\nПравила: для табеля извлеки часы по каждому календарному дню; не выдумывай часы. В чате рабочих денег отличи выдачу денег сотруднику от чека за уже выданные средства. В чате компенсаций это личные деньги сотрудника, которые фирма должна вернуть. При неопределённости укажи documentType unknown и низкую confidence.`;
+  const timesheetRules = purpose === 'timesheet'
+    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Обязательно заполни entries для всех людей, у которых есть часы. В dailyHours указывай только реальные часы напротив календарного дня; пустую ячейку считай 0. Не подменяй часы недельным итогом. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка).`
+    : '';
+  return `Ты извлекаешь данные для программы учёта рабочих часов и выплат. Язык документа может быть русским, немецким, польским, украинским или английским.\n\nТип входящего чата: ${purpose}.\n\nВерни ТОЛЬКО корректный JSON без Markdown. Используй поля:\n{\n  "documentType": "timesheet|salary_advance|company_advance|receipt|compensation|unknown",\n  "confidence": 0.0,\n  "summary": "кратко по-русски",\n  "projectName": "название объекта или пустая строка",\n  "month": "YYYY-MM или пустая строка",\n  "weekNumber": 0,\n  "periodStart": "YYYY-MM-DD или пустая строка",\n  "periodEnd": "YYYY-MM-DD или пустая строка",\n  "date": "YYYY-MM-DD или пустая строка",\n  "personName": "ФАМИЛИЯ ИМЯ или пустая строка",\n  "amount": 0,\n  "currency": "EUR",\n  "category": "топливо|инструмент|материалы|билет|другое",\n  "notes": "что куплено или за что деньги",\n  "entries": [{"personName":"ФАМИЛИЯ ИМЯ", "dailyHours":[{"day":1,"hours":8}]}],\n  "excludedPeople": ["люди в документе, которых нельзя уверенно сопоставить"]\n}\n\nПравила: не выдумывай значения. В чате рабочих денег отличи выдачу денег сотруднику от чека за уже выданные средства. В чате компенсаций это личные деньги сотрудника, которые фирма должна вернуть. При неопределённости укажи documentType unknown и низкую confidence.${timesheetRules}`;
 }
 
 async function askOpenAi(record, attachment) {
@@ -373,7 +421,10 @@ function buildAiDraft(state, record, analysis) {
     personId: personMatch?.person.id || '',
     projectName: String(analysis.projectName || ''),
     projectId: projectMatch?.project.id || '',
-    month: validMonth(analysis.month),
+    month: inferredMonth(analysis, received),
+    weekNumber: Number(analysis.weekNumber) || 0,
+    periodStart: validDate(analysis.periodStart, ''),
+    periodEnd: validDate(analysis.periodEnd, ''),
     date: validDate(analysis.date, received),
     amount: Math.max(0, Number(analysis.amount) || 0),
     currency: String(analysis.currency || 'EUR').toUpperCase() === 'EUR' ? '€' : String(analysis.currency || '€'),
