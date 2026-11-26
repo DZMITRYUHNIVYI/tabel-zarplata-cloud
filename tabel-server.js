@@ -23,6 +23,10 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const TELEGRAM_FILES_DIR = path.join(DATA_DIR, 'telegram-files');
 const TELEGRAM_FILE_LIMIT = 20 * 1024 * 1024;
 const AI_PROCESSING = new Set();
+const AI_QUEUE = [];
+const AI_QUEUED = new Set();
+const AI_CONCURRENCY = Math.max(1, Math.min(3, Number(process.env.AI_CONCURRENCY || 2)));
+const OPENAI_TIMEOUT_MS = Math.max(30_000, Number(process.env.OPENAI_TIMEOUT_MS || 120_000));
 
 function send(res, status, body, type = 'text/plain; charset=utf-8') {
   res.writeHead(status, {
@@ -412,14 +416,24 @@ async function askOpenAi(record, attachment) {
     if (attachment.mimeType.startsWith('image/')) content.push({ type: 'input_image', image_url: dataUrl, detail: 'high' });
     else content.push({ type: 'input_file', filename: record.source?.fileName || 'telegram-file', file_data: dataUrl });
   }
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify({ model: OPENAI_MODEL, input: [{ role: 'user', content }], temperature: 0 })
-  });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error?.message || 'OpenAI не принял документ.');
-  return jsonFromAi(responseText(payload));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: OPENAI_MODEL, input: [{ role: 'user', content }], temperature: 0 }),
+      signal: controller.signal,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error?.message || 'OpenAI не принял документ.');
+    return jsonFromAi(responseText(payload));
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('ИИ не ответил вовремя. Документ можно обработать повторно.');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function buildAiDraft(state, record, analysis) {
@@ -551,6 +565,7 @@ async function processTelegramIncoming(recordId) {
     if (!record) throw new Error('Сообщение не найдено.');
     if (record.kind === 'unconfigured') throw new Error('Сначала назначьте этому чату тип.');
     record.status = 'processing';
+    record.processingStartedAt = new Date().toISOString();
     delete record.error;
     writeSystemState(current);
     const attachment = await downloadTelegramAttachment(record);
@@ -580,10 +595,33 @@ async function processTelegramIncoming(recordId) {
 }
 
 function queueTelegramProcessing(recordId) {
-  if (AI_PROCESSING.has(recordId)) return;
-  setTimeout(() => {
-    void processTelegramIncoming(recordId).catch(error => console.error(`Telegram AI processing failed: ${error.message}`));
-  }, 0);
+  if (AI_PROCESSING.has(recordId) || AI_QUEUED.has(recordId)) return;
+  AI_QUEUE.push(recordId);
+  AI_QUEUED.add(recordId);
+  drainAiQueue();
+}
+
+function drainAiQueue() {
+  while (AI_PROCESSING.size < AI_CONCURRENCY && AI_QUEUE.length) {
+    const recordId = AI_QUEUE.shift();
+    AI_QUEUED.delete(recordId);
+    void processTelegramIncoming(recordId)
+      .catch(error => console.error(`Telegram AI processing failed: ${error.message}`))
+      .finally(drainAiQueue);
+  }
+}
+
+function recoverInterruptedAiProcessing() {
+  if (!fs.existsSync(STATE_FILE)) return;
+  const current = readJson(STATE_FILE);
+  const interrupted = (current.telegram?.inbox || []).filter(item => item.status === 'processing');
+  if (!interrupted.length) return;
+  interrupted.forEach(item => {
+    item.status = 'received';
+    item.error = 'Обработка восстановлена после перезапуска сервера.';
+  });
+  writeSystemState(current);
+  interrupted.forEach(item => queueTelegramProcessing(item.id));
 }
 
 function messageKind(state, chatId) {
@@ -710,5 +748,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Tabel app server: http://localhost:${PORT}/tabel-zarplata-app.html`);
+  recoverInterruptedAiProcessing();
   void registerTelegramWebhook();
 });
