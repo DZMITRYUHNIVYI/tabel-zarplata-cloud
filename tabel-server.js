@@ -86,13 +86,14 @@ function stateStats(state) {
     settlements: (state?.settlements || []).length,
     advances: (state?.advances || []).length,
     expenses: (state?.expenses || []).length,
+    mandates: (state?.mandates || []).length,
     telegramInbox: (state?.telegram?.inbox || []).length,
     hours: Number(totalHours(state).toFixed(2)),
   };
 }
 
 function score(stats) {
-  return stats.people * 1000 + stats.projects * 1000 + stats.timesheets * 80 + stats.entries * 10 + stats.monthlyHours * 10 + stats.invoices * 10 + stats.settlements + stats.advances + stats.expenses + stats.telegramInbox + stats.hours / 100;
+  return stats.people * 1000 + stats.projects * 1000 + stats.timesheets * 80 + stats.entries * 10 + stats.monthlyHours * 10 + stats.invoices * 10 + stats.settlements + stats.advances + stats.expenses + stats.mandates * 10 + stats.telegramInbox + stats.hours / 100;
 }
 
 function idsMissing(current = [], incoming = []) {
@@ -170,6 +171,7 @@ function validateIncomingState(current, incoming, clientBaseRevision) {
     || idsMissing(current.settlements, incoming.settlements)
     || idsMissing(current.advances, incoming.advances)
     || idsMissing(current.expenses, incoming.expenses)
+    || idsMissing(current.mandates, incoming.mandates)
     || idsMissing(current.telegram?.inbox, incoming.telegram?.inbox)
     || sheetEntriesMissing(current.timesheets, incoming.timesheets);
   // A stale tab must not silently change the server-side processing result.
@@ -192,6 +194,7 @@ function validateIncomingState(current, incoming, clientBaseRevision) {
     || after.invoices < before.invoices
     || after.advances < before.advances
     || after.expenses < before.expenses
+    || after.mandates < before.mandates
     || after.telegramInbox < before.telegramInbox
     || after.hours + 0.01 < before.hours
     || score(after) + 0.01 < score(before);

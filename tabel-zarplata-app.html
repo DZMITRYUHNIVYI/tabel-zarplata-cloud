@@ -1437,6 +1437,7 @@
       <button data-view="projects">Объекты</button>
       <button data-view="objectDays">Объекты по дням</button>
       <button data-view="invoices">Счета</button>
+      <button data-view="mandates">Мандаты</button>
       <button data-view="payroll">Зарплаты</button>
       <button data-view="settlements">Выплаты</button>
       <button data-view="inbox">Входящие</button>
@@ -1596,6 +1597,42 @@
         <div class="panel"><div class="panel-head"><h2>Счета</h2></div><div class="panel-body"><div class="table-wrap"><table id="invoicesTable"></table></div></div></div>
       </div>
     </section>
+    <section id="mandates" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Мандаты</h2>
+          <div class="dashboard-filters">
+            <div><label>Поиск</label><input id="mandateSearch" placeholder="Номер, машина, сотрудник, город"></div>
+            <div><label>Показать</label><select id="mandateFilter"><option value="open">Открытые</option><option value="all">Все</option><option value="overdue">Просроченные</option><option value="paid">Оплаченные</option></select></div>
+            <label class="button" title="Загрузить CSV-отчёт из Mandat Manager">Импорт из Mandat Manager<input id="mandateImportInput" type="file" accept=".csv,text/csv" hidden></label>
+          </div>
+        </div>
+        <div class="panel-body"><div class="grid three" id="mandateMetrics"></div></div>
+      </div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="panel">
+          <div class="panel-head"><h2>Добавить мандат</h2></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div><label>Номер мандата</label><input id="mandateNumber" placeholder="Номер документа"></div>
+              <div><label>Госномер</label><input id="mandatePlate" placeholder="AB 1234 CD"></div>
+              <div class="wide"><label>Сотрудник / водитель</label><select id="mandatePerson"></select></div>
+              <div><label>Город</label><input id="mandateCity" placeholder="Город"></div>
+              <div><label>Дата нарушения</label><input id="mandateViolation" type="date"></div>
+              <div><label>Срок оплаты</label><input id="mandateDeadline" type="date"></div>
+              <div><label>Сумма</label><input id="mandateAmount" type="number" min="0" step="0.01"></div>
+              <div><label>Валюта</label><input id="mandateCurrency" value="EUR"></div>
+              <div class="wide"><label>Заметка</label><textarea id="mandateNotes" placeholder="Причина, орган, ссылка на исходный документ"></textarea></div>
+              <div class="wide"><button class="primary" id="addMandateBtn">Сохранить мандат</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Контроль дел</h2></div>
+          <div class="panel-body"><div class="table-wrap"><table id="mandatesTable"></table></div></div>
+        </div>
+      </div>
+    </section>
     <section id="payroll" class="view">
       <div class="panel">
         <div class="panel-head">
@@ -1743,6 +1780,7 @@
         settlements: [],
         advances: [],
         expenses: [],
+        mandates: [],
         telegram: { chats: [], inbox: [] }
       };
     }
@@ -1788,8 +1826,9 @@
       const invoices = (data.invoices || []).length;
       const monthly = (data.monthlyHours || []).length;
       const settlements = (data.settlements || []).length;
+      const mandates = (data.mandates || []).length;
       const hours = (data.timesheets || []).reduce((sum, sheet) => sum + (sheet.entries || []).reduce((rowSum, entry) => rowSum + (entry.hours || []).reduce((hourSum, hour) => hourSum + num(hour), 0), 0), 0);
-      return realProjects * 1000 + realPeople * 100 + sheets * 20 + invoices * 10 + monthly * 10 + settlements + hours / 100;
+      return realProjects * 1000 + realPeople * 100 + sheets * 20 + invoices * 10 + monthly * 10 + settlements + mandates * 10 + hours / 100;
     }
     function bestLocalState() {
       const current = readStoredState(STORAGE_KEY);
@@ -1821,6 +1860,7 @@
       data.settlements = Array.isArray(data.settlements) ? data.settlements : [];
       data.advances = Array.isArray(data.advances) ? data.advances : [];
       data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
+      data.mandates = Array.isArray(data.mandates) ? data.mandates : [];
       data.telegram = data.telegram && typeof data.telegram === 'object' ? data.telegram : {};
       data.telegram.chats = Array.isArray(data.telegram.chats) ? data.telegram.chats : [];
       data.telegram.inbox = Array.isArray(data.telegram.inbox) ? data.telegram.inbox : [];
@@ -2026,6 +2066,7 @@
       renderProjects();
       renderObjectDays();
       renderInvoices();
+      renderMandates();
       renderSheets();
       renderHours();
       renderPayroll();
@@ -2036,7 +2077,7 @@
     }
     function renderSelects() {
       const selectedValues = {};
-      ['dashboardProject', 'payrollProject', 'printReportProject', 'payrollPerson', 'printReportPerson', 'employeeReportPerson', 'monthlyPerson', 'monthlyProject', 'sheetProject', 'invoiceProject'].forEach(id => {
+      ['dashboardProject', 'payrollProject', 'printReportProject', 'payrollPerson', 'printReportPerson', 'employeeReportPerson', 'monthlyPerson', 'monthlyProject', 'sheetProject', 'invoiceProject', 'mandatePerson'].forEach(id => {
         selectedValues[id] = byId(id)?.value || '';
       });
       const projectOptions = projectsAlphabetically().map(project => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join('');
@@ -2050,6 +2091,7 @@
       byId('employeeReportPerson').innerHTML = payrollPersonOptions;
       byId('printReportPerson').innerHTML = '<option value="">По объекту</option>' + payrollPersonOptions;
       byId('monthlyPerson').innerHTML = personOptions || '<option value="">Нет сотрудников</option>';
+      byId('mandatePerson').innerHTML = '<option value="">Не сопоставлен</option>' + payrollPersonOptions;
       byId('personLegalEntity').innerHTML = legalEntities.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
       Object.entries(selectedValues).forEach(([id, value]) => {
         if (value && [...(byId(id)?.options || [])].some(option => option.value === value)) byId(id).value = value;
@@ -2279,6 +2321,121 @@
         const project = getProject(invoice.projectId);
         return [`<strong>${escapeHtml(invoice.number || 'Без номера')}</strong><div class="small muted">${escapeHtml(invoice.notes || '')}</div>`, escapeHtml(project?.name || ''), `${invoice.periodFrom || ''} — ${invoice.periodTo || ''}`, invoice.date || '', invoice.dueDate || '', money(invoice.amount, project?.currency), statusBadge(invoice), `<div class="row-actions"><button title="Отметить оплаченным" onclick="markInvoicePaid('${invoice.id}')">Оплачен</button><button class="icon" title="Удалить" onclick="deleteInvoice('${invoice.id}')">×</button></div>`];
       }), 'Счета еще не добавлены');
+    }
+    function mandateAttention(item) {
+      if (item.payment === 'paid') return '';
+      if (!item.deadline) return 'unknown';
+      if (item.deadline < today()) return 'overdue';
+      const inWeek = new Date();
+      inWeek.setDate(inWeek.getDate() + 7);
+      return item.deadline <= localDateText(inWeek) ? 'soon' : '';
+    }
+    function mandatePaymentLabel(item) {
+      if (item.payment === 'paid') return 'Оплачен';
+      if (item.payment === 'disputed') return 'Оспаривается';
+      return 'Не оплачен';
+    }
+    function mandateProcessingLabel(item) {
+      return ({ new: 'Новый', review: 'На проверке', working: 'В работе', done: 'Обработан' })[item.processing] || 'Новый';
+    }
+    function mandateStatusBadge(item) {
+      const attention = mandateAttention(item);
+      const cls = item.payment === 'paid' ? 'paid' : attention === 'overdue' ? 'overdue' : item.payment === 'disputed' ? 'draft' : 'sent';
+      const prefix = attention === 'overdue' ? 'Просрочен · ' : attention === 'soon' ? 'Срок скоро · ' : '';
+      return `<span class="status ${cls}">${prefix}${mandatePaymentLabel(item)}</span>`;
+    }
+    function renderMandates() {
+      const metrics = byId('mandateMetrics');
+      const all = state.mandates || [];
+      const open = all.filter(item => item.payment !== 'paid');
+      const overdue = open.filter(item => mandateAttention(item) === 'overdue');
+      const openAmount = open.reduce((sum, item) => sum + num(item.amount), 0);
+      metrics.innerHTML = [
+        metric('Открытые', open.length, 'Требуют контроля'),
+        metric('Просроченные', overdue.length, 'Срок оплаты прошёл'),
+        metric('К оплате', money(openAmount, 'EUR'), 'Сумма в валютах отображается в карточках')
+      ].join('');
+      const search = byId('mandateSearch').value.trim().toLocaleLowerCase();
+      const filter = byId('mandateFilter').value || 'open';
+      const rows = all.filter(item => {
+        const attention = mandateAttention(item);
+        if (filter === 'open' && item.payment === 'paid') return false;
+        if (filter === 'paid' && item.payment !== 'paid') return false;
+        if (filter === 'overdue' && attention !== 'overdue') return false;
+        if (!search) return true;
+        return [item.number, item.plate, item.personName, item.city, item.notes].some(value => String(value || '').toLocaleLowerCase().includes(search));
+      }).sort((a, b) => `${a.deadline || '9999'}${a.number || ''}`.localeCompare(`${b.deadline || '9999'}${b.number || ''}`));
+      byId('mandatesTable').innerHTML = table(['Мандат', 'Сотрудник', 'Нарушение', 'Срок', 'Сумма', 'Работа', 'Оплата', ''], rows.map(item => [
+        `<strong>${escapeHtml(item.number || 'Без номера')}</strong><div class="small muted">${escapeHtml(item.plate || '')}${item.city ? ` · ${escapeHtml(item.city)}` : ''}</div>`,
+        escapeHtml(item.personName || 'Не сопоставлен'),
+        item.violation || '—',
+        item.deadline || '—',
+        money(item.amount, item.currency || 'EUR'),
+        escapeHtml(mandateProcessingLabel(item)),
+        mandateStatusBadge(item),
+        `<div class="row-actions">${item.payment === 'paid' ? '' : `<button title="Отметить оплаченным" onclick="markMandatePaid('${item.id}')">Оплачен</button>`}<button class="icon" title="Удалить" onclick="deleteMandate('${item.id}')">×</button></div>`
+      ]), 'Мандатов по выбранному фильтру нет');
+    }
+    function csvRows(text) {
+      const rows = [];
+      let value = ''; let row = []; let quoted = false;
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        if (char === '"') {
+          if (quoted && text[index + 1] === '"') { value += '"'; index++; }
+          else quoted = !quoted;
+        } else if (char === ';' && !quoted) { row.push(value.trim()); value = ''; }
+        else if ((char === '\n' || char === '\r') && !quoted) {
+          if (char === '\r' && text[index + 1] === '\n') index++;
+          row.push(value.trim()); value = '';
+          if (row.some(cell => cell)) rows.push(row);
+          row = [];
+        } else value += char;
+      }
+      row.push(value.trim());
+      if (row.some(cell => cell)) rows.push(row);
+      return rows;
+    }
+    function normalizeMandateHeader(value) {
+      return String(value || '').replace(/^\uFEFF/, '').trim().toLocaleLowerCase();
+    }
+    function importMandatesCsv(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = event => {
+        const rows = csvRows(String(event.target.result || ''));
+        if (rows.length < 2) return alert('В файле нет строк мандатов. Экспортируйте CSV из Mandat Manager.');
+        const headers = rows.shift().map(normalizeMandateHeader);
+        const indexOf = label => headers.indexOf(label);
+        const numberIndex = indexOf('номер мандата');
+        const plateIndex = indexOf('госномер');
+        const driverIndex = indexOf('водитель');
+        if (numberIndex < 0 && plateIndex < 0) return alert('Это не отчёт Mandat Manager: не найдены номер мандата или госномер.');
+        const get = (row, label) => { const index = indexOf(label); return index >= 0 ? row[index] || '' : ''; };
+        let added = 0; let updated = 0;
+        rows.forEach(row => {
+          const number = get(row, 'номер мандата');
+          const plate = get(row, 'госномер');
+          const personName = get(row, 'водитель');
+          if (!number && !plate && !personName) return;
+          const person = peopleAlphabetically().find(candidate => String(candidate.name || '').trim().toLocaleLowerCase() === personName.trim().toLocaleLowerCase());
+          const key = `${number}|${plate}|${personName}`.toLocaleLowerCase();
+          const existing = state.mandates.find(item => `${item.number || ''}|${item.plate || ''}|${item.personName || ''}`.toLocaleLowerCase() === key);
+          const item = existing || { id: uid(), createdAt: new Date().toISOString(), source: 'Mandat Manager' };
+          Object.assign(item, {
+            number, plate, personId: person?.id || item.personId || '', personName: person?.name || personName,
+            city: get(row, 'город'), violation: get(row, 'дата нарушения'), deadline: get(row, 'срок оплаты'),
+            amount: Number(String(get(row, 'сумма')).replace(',', '.')) || 0, currency: get(row, 'валюта') || 'EUR',
+            processing: ({ 'новый': 'new', 'на проверке': 'review', 'в работе': 'working', 'обработан': 'done' })[normalizeMandateHeader(get(row, 'обработка'))] || 'new',
+            payment: ({ 'оплачен': 'paid', 'оспаривается': 'disputed', 'не оплачен': 'unpaid' })[normalizeMandateHeader(get(row, 'оплата'))] || 'unpaid',
+            notes: get(row, 'заметка'), importedAt: new Date().toISOString()
+          });
+          if (existing) updated++; else { state.mandates.push(item); added++; }
+        });
+        saveState(); renderMandates();
+        alert(`Импорт завершён: добавлено ${added}, обновлено ${updated}.`);
+      };
+      reader.readAsText(file, 'utf-8');
     }
     function renderSheets() {
       let sheet = getSheet(activeSheetId);
@@ -3379,6 +3536,36 @@
       ['invoiceNumber', 'invoiceAmount', 'invoiceNotes'].forEach(id => byId(id).value = '');
       render();
     }
+    function addMandate() {
+      const personId = byId('mandatePerson').value;
+      const person = getPerson(personId);
+      const number = byId('mandateNumber').value.trim();
+      const plate = byId('mandatePlate').value.trim();
+      if (!number && !plate) return alert('Укажите номер мандата или госномер.');
+      const duplicate = state.mandates.find(item => item.number && number && String(item.number).toLocaleLowerCase() === number.toLocaleLowerCase());
+      if (duplicate) return alert('Мандат с таким номером уже есть в общей базе.');
+      state.mandates.push({
+        id: uid(), number, plate, personId: person?.id || '', personName: person?.name || '',
+        city: byId('mandateCity').value.trim(), violation: byId('mandateViolation').value,
+        deadline: byId('mandateDeadline').value, amount: num(byId('mandateAmount').value),
+        currency: byId('mandateCurrency').value.trim().toUpperCase() || 'EUR', notes: byId('mandateNotes').value.trim(),
+        processing: 'new', payment: 'unpaid', createdAt: new Date().toISOString(), source: 'Единая система'
+      });
+      ['mandateNumber', 'mandatePlate', 'mandateCity', 'mandateViolation', 'mandateDeadline', 'mandateAmount', 'mandateNotes'].forEach(id => byId(id).value = '');
+      saveState(); renderMandates();
+    }
+    function markMandatePaid(id) {
+      const item = state.mandates.find(candidate => candidate.id === id);
+      if (!item) return;
+      item.payment = 'paid'; item.paidAt = today();
+      saveState(); renderMandates();
+    }
+    function deleteMandate(id) {
+      const item = state.mandates.find(candidate => candidate.id === id);
+      if (!item || !confirm(`Удалить мандат «${item.number || item.plate || 'без номера'}»?`)) return;
+      state.mandates = state.mandates.filter(candidate => candidate.id !== id);
+      saveState(); renderMandates();
+    }
     function addMonthlyHours() {
       if (!byId('monthlyPerson').value) return alert('Сначала добавьте сотрудника');
       if (!byId('monthlyProject').value) return alert('Сначала добавьте объект');
@@ -4129,6 +4316,13 @@ ${worksheets}
       if (input) saveProjectRate(input.dataset.projectRate);
     });
     byId('addInvoiceBtn').addEventListener('click', addInvoice);
+    byId('addMandateBtn').addEventListener('click', addMandate);
+    byId('mandateSearch').addEventListener('input', renderMandates);
+    byId('mandateFilter').addEventListener('change', renderMandates);
+    byId('mandateImportInput').addEventListener('change', event => {
+      importMandatesCsv(event.target.files?.[0]);
+      event.target.value = '';
+    });
     byId('invoiceDate').addEventListener('change', () => {
       if (byId('invoicePeriodFrom').value || byId('invoicePeriodTo').value) return;
       const month = (byId('invoiceDate').value || today()).slice(0, 7);
