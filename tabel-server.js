@@ -422,7 +422,7 @@ function jsonFromAi(text) {
 function aiInstructions(record) {
   const purpose = record.kind;
   const timesheetRules = purpose === 'timesheet'
-    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Обязательно заполни entries для всех людей, у которых есть часы. В dailyHours указывай только реальные часы напротив календарного дня; пустую ячейку считай 0. Не подменяй часы недельным итогом. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка).`
+    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Обязательно заполни entries для всех людей, у которых есть ЯВНО УКАЗАННЫЕ ЧИСЛА часов. В dailyHours указывай только реальные часы напротив календарного дня; пустую ячейку считай 0. Не подменяй часы недельным итогом. ВАЖНО: X, галочка, крестик, точка или иной знак присутствия БЕЗ числа часов не означает 8 часов и не должен становиться dailyHours. В таком случае поставь attendanceOnly: true, перечисли имена в excludedPeople и не придумывай часы. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка), attendanceOnly (true, если есть только отметки присутствия без численных часов).`
     : '';
   return `Ты извлекаешь данные для программы учёта рабочих часов и выплат. Язык документа может быть русским, немецким, польским, украинским или английским.\n\nТип входящего чата: ${purpose}.\n\nВерни ТОЛЬКО корректный JSON без Markdown. Используй поля:\n{\n  "documentType": "timesheet|salary_advance|company_advance|receipt|compensation|unknown",\n  "confidence": 0.0,\n  "summary": "кратко по-русски",\n  "projectName": "название объекта или пустая строка",\n  "month": "YYYY-MM или пустая строка",\n  "weekNumber": 0,\n  "periodStart": "YYYY-MM-DD или пустая строка",\n  "periodEnd": "YYYY-MM-DD или пустая строка",\n  "date": "YYYY-MM-DD или пустая строка",\n  "personName": "ФАМИЛИЯ ИМЯ или пустая строка",\n  "amount": 0,\n  "currency": "EUR",\n  "category": "топливо|инструмент|материалы|билет|другое",\n  "notes": "что куплено или за что деньги",\n  "entries": [{"personName":"ФАМИЛИЯ ИМЯ", "dailyHours":[{"day":1,"hours":8}]}],\n  "excludedPeople": ["люди в документе, которых нельзя уверенно сопоставить"]\n}\n\nПравила: не выдумывай значения. В чате рабочих денег отличи выдачу денег сотруднику от чека за уже выданные средства. В чате компенсаций это личные деньги сотрудника, которые фирма должна вернуть. При неопределённости укажи documentType unknown и низкую confidence.${timesheetRules}`;
 }
@@ -490,6 +490,7 @@ function buildAiDraft(state, record, analysis) {
     currency: String(analysis.currency || 'EUR').toUpperCase() === 'EUR' ? '€' : String(analysis.currency || '€'),
     category: String(analysis.category || 'Другое'),
     notes: String(analysis.notes || ''),
+    attendanceOnly: Boolean(analysis.attendanceOnly),
     excludedPeople: Array.isArray(analysis.excludedPeople) ? analysis.excludedPeople.map(String).filter(Boolean).slice(0, 50) : [],
   };
   draft.reimbursementMonth = nextMonth(draft.date);
@@ -522,7 +523,7 @@ function buildAiDraft(state, record, analysis) {
 
 function isReadyDraft(record) {
   const draft = record.ai || {};
-  if (record.kind === 'timesheet') return Boolean(draft.projectId && draft.month && draft.entries?.length);
+  if (record.kind === 'timesheet') return !draft.attendanceOnly && Boolean(draft.projectId && draft.month && draft.entries?.length);
   if (record.kind === 'company_funds' && !['company_advance', 'receipt'].includes(draft.documentType)) return false;
   return Boolean(draft.personId && Number(draft.amount) > 0);
 }
@@ -537,7 +538,7 @@ function daysInMonth(month) {
 
 function autoApplyTimesheet(state, record) {
   const draft = record.ai || {};
-  if (record.kind !== 'timesheet' || !isReadyDraft(record)) return false;
+  if (record.kind !== 'timesheet' || draft.attendanceOnly || !isReadyDraft(record)) return false;
   if (state.telegram?.autoApplyTimesheets === false) return false;
   const dayCount = daysInMonth(draft.month);
   const sourceAlreadyUsed = (state.timesheets || []).some(sheet => sheet.sourceIncomingId === record.id || (sheet.sourceIncomingIds || []).includes(record.id));
@@ -596,6 +597,47 @@ function autoApplyTimesheet(state, record) {
   return true;
 }
 
+function stateBeforeTimesheetApplication(recordId) {
+  if (!fs.existsSync(HISTORY_DIR)) return null;
+  const files = fs.readdirSync(HISTORY_DIR).filter(name => name.endsWith('.json')).sort().reverse();
+  for (const file of files) {
+    try {
+      const snapshot = readJson(path.join(HISTORY_DIR, file));
+      const record = snapshot?.telegram?.inbox?.find(item => item.id === recordId);
+      if (record && record.status !== 'applied' && !record.autoApplied) return snapshot;
+    } catch {
+      // A corrupted historical snapshot must not stop the live queue.
+    }
+  }
+  return null;
+}
+
+function rollbackTimesheetApplication(state, record) {
+  const draft = record.ai || {};
+  const before = stateBeforeTimesheetApplication(record.id);
+  const sheet = (state.timesheets || []).find(item => item.projectId === draft.projectId && validMonth(item.month || item.weekStart?.slice(0, 7)) === draft.month);
+  const previousSheet = before?.timesheets?.find(item => item.id === sheet?.id)
+    || before?.timesheets?.find(item => item.projectId === draft.projectId && validMonth(item.month || item.weekStart?.slice(0, 7)) === draft.month);
+  if (!before || !sheet) return false;
+  for (const sourceEntry of draft.entries || []) {
+    const target = (sheet.entries || []).find(entry => entry.personId === sourceEntry.personId);
+    if (!target) continue;
+    const prior = (previousSheet?.entries || []).find(entry => entry.personId === sourceEntry.personId);
+    target.hours = Array.from({ length: Math.max(target.hours?.length || 0, sourceEntry.hours?.length || 0) }, (_, index) => {
+      const currentValue = Number(target.hours?.[index]) || 0;
+      const appliedValue = Number(sourceEntry.hours?.[index]) || 0;
+      if (appliedValue > 0 && currentValue === appliedValue) return Number(prior?.hours?.[index]) || 0;
+      return currentValue;
+    });
+  }
+  sheet.entries = (sheet.entries || []).filter(entry => entry.hours?.some(value => Number(value) > 0) || (previousSheet?.entries || []).some(item => item.personId === entry.personId));
+  sheet.sourceIncomingIds = (sheet.sourceIncomingIds || []).filter(id => id !== record.id);
+  record.autoApplied = false;
+  delete record.appliedAt;
+  record.retractedAt = new Date().toISOString();
+  return true;
+}
+
 async function processTelegramIncoming(recordId) {
   if (AI_PROCESSING.has(recordId)) return { queued: true };
   AI_PROCESSING.add(recordId);
@@ -613,6 +655,9 @@ async function processTelegramIncoming(recordId) {
     const latestRecord = latest?.telegram?.inbox?.find(item => item.id === recordId);
     if (!latest || !latestRecord) throw new Error('Сообщение изменилось во время обработки.');
     const analysis = await askOpenAi(latestRecord, attachment);
+    if (latestRecord.autoApplied && !rollbackTimesheetApplication(latest, latestRecord)) {
+      throw new Error('Не удалось безопасно откатить предыдущий автоматический расчёт этого табеля.');
+    }
     latestRecord.ai = buildAiDraft(latest, latestRecord, analysis);
     latestRecord.status = isReadyDraft(latestRecord) ? 'ready' : 'needs_review';
     const autoApplied = autoApplyTimesheet(latest, latestRecord);
