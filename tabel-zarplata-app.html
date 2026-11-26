@@ -2767,7 +2767,8 @@
         const actions = item.status === 'applied' || item.status === 'rejected'
           ? ''
           : chatSetup || `<div class="row-actions">${canProcess ? `<button onclick="processTelegramIncoming('${item.id}')">${item.status === 'failed' ? 'Повторить ИИ' : 'Распознать ИИ'}</button>` : ''}${reviewButton}${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
-        return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${incomingStatusText(item.status)}</span>`, received, actions];
+        const statusText = item.autoApplied ? 'Внесено автоматически' : incomingStatusText(item.status);
+        return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${statusText}</span>`, received, actions];
       });
       tableTarget.innerHTML = table(['Тип', 'Чат', 'Источник', 'Результат ИИ', 'Статус', 'Получено', ''], rows, 'Входящих сообщений из Telegram пока нет');
       renderInboxReview();

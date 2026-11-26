@@ -463,6 +463,68 @@ function isReadyDraft(record) {
   return Boolean(draft.personId && Number(draft.amount) > 0);
 }
 
+function serverUid() {
+  return `srv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function daysInMonth(month) {
+  return new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+}
+
+function autoApplyTimesheet(state, record) {
+  const draft = record.ai || {};
+  if (record.kind !== 'timesheet' || !isReadyDraft(record)) return false;
+  if (state.telegram?.autoApplyTimesheets === false) return false;
+  const dayCount = daysInMonth(draft.month);
+  const sourceAlreadyUsed = (state.timesheets || []).some(sheet => sheet.sourceIncomingId === record.id || (sheet.sourceIncomingIds || []).includes(record.id));
+  if (sourceAlreadyUsed) return false;
+  const knownPeople = new Set((state.people || []).map(person => person.id));
+  const entries = (draft.entries || [])
+    .filter(entry => knownPeople.has(entry.personId))
+    .map(entry => ({
+      personId: entry.personId,
+      hours: Array.from({ length: dayCount }, (_, index) => Number(entry.hours?.[index]) || 0),
+    }));
+  if (!entries.length) return false;
+
+  let sheet = (state.timesheets || []).find(item => item.projectId === draft.projectId && validMonth(item.month || item.weekStart?.slice(0, 7)) === draft.month);
+  if (!sheet) {
+    sheet = {
+      id: serverUid(),
+      projectId: draft.projectId,
+      month: draft.month,
+      weekStart: `${draft.month}-01`,
+      notes: '',
+      photo: '',
+      photos: [],
+      entries: [],
+      sourceIncomingIds: [],
+      status: 'draft',
+    };
+    state.timesheets = Array.isArray(state.timesheets) ? state.timesheets : [];
+    state.timesheets.push(sheet);
+  }
+  sheet.entries = Array.isArray(sheet.entries) ? sheet.entries : [];
+  for (const incoming of entries) {
+    let target = sheet.entries.find(entry => entry.personId === incoming.personId);
+    if (!target) {
+      target = { personId: incoming.personId, hours: Array.from({ length: dayCount }, () => 0) };
+      sheet.entries.push(target);
+    }
+    target.hours = Array.from({ length: dayCount }, (_, index) => {
+      const incomingHours = Number(incoming.hours?.[index]) || 0;
+      return incomingHours > 0 ? incomingHours : Number(target.hours?.[index]) || 0;
+    });
+  }
+  const origin = `Telegram: ${record.source?.chatTitle || 'Табели'}`;
+  if (!String(sheet.notes || '').includes(origin)) sheet.notes = [sheet.notes, origin].filter(Boolean).join('\n');
+  sheet.sourceIncomingIds = [...new Set([...(sheet.sourceIncomingIds || []), record.id])];
+  record.status = 'applied';
+  record.autoApplied = true;
+  record.appliedAt = new Date().toISOString();
+  return true;
+}
+
 async function processTelegramIncoming(recordId) {
   if (AI_PROCESSING.has(recordId)) return { queued: true };
   AI_PROCESSING.add(recordId);
@@ -481,10 +543,11 @@ async function processTelegramIncoming(recordId) {
     const analysis = await askOpenAi(latestRecord, attachment);
     latestRecord.ai = buildAiDraft(latest, latestRecord, analysis);
     latestRecord.status = isReadyDraft(latestRecord) ? 'ready' : 'needs_review';
+    const autoApplied = autoApplyTimesheet(latest, latestRecord);
     latestRecord.processedAt = new Date().toISOString();
     if (attachment) latestRecord.source.localFile = path.basename(attachment.filePath);
     writeSystemState(latest);
-    return { ok: true, status: latestRecord.status, record: latestRecord };
+    return { ok: true, status: latestRecord.status, autoApplied, record: latestRecord };
   } catch (error) {
     const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
     const record = current?.telegram?.inbox?.find(item => item.id === recordId);
