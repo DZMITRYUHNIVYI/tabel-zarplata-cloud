@@ -255,6 +255,22 @@
       font-size: 12px;
       margin-top: 6px;
     }
+    .workspace-action {
+      display: block;
+      width: 100%;
+      min-height: 112px;
+      padding: 14px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: 0 2px 8px rgba(17, 40, 43, .05);
+    }
+    .workspace-action:hover { border-color: #6d9a91; background: #f5faf8; }
+    .workspace-action .name { display: block; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .workspace-action .value { display: block; margin-top: 8px; font-size: 25px; font-weight: 800; line-height: 1.1; }
+    .workspace-action .hint { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
     .row-actions {
       display: flex;
       justify-content: flex-end;
@@ -1447,13 +1463,14 @@
     <section id="dashboard" class="view active">
       <div class="panel">
         <div class="panel-head">
-          <h2>Обзор</h2>
+          <h2>Рабочий стол</h2>
           <div class="dashboard-filters">
             <div><label>Месяц</label><input id="dashboardMonth" type="month"></div>
             <div><label>Объект</label><select id="dashboardProject"></select></div>
             <button id="dashboardClearBtn" type="button">Сбросить</button>
           </div>
         </div>
+        <div class="panel-body"><div class="grid three" id="workspaceActions"></div></div>
       </div>
       <div class="grid two" style="margin-top:14px">
         <div class="panel">
@@ -2118,6 +2135,7 @@
       }
     }
     function renderDashboard() {
+      renderWorkspace();
       const month = byId('dashboardMonth')?.value || '';
       const projectId = byId('dashboardProject')?.value || '';
       const projects = projectsAlphabetically().filter(project => !projectId || project.id === projectId);
@@ -2147,6 +2165,24 @@
           `<button class="primary" type="button" onclick="openSheetForEditing('${sheet.id}')">Открыть</button>`
         ];
       }), 'Табелей пока нет');
+    }
+    function workspaceAction(view, name, value, hint) {
+      return `<button class="workspace-action" type="button" data-workspace-view="${view}"><span class="name">${name}</span><span class="value">${value}</span><span class="hint">${hint}</span></button>`;
+    }
+    function renderWorkspace() {
+      const inbox = state.telegram?.inbox || [];
+      const awaiting = inbox.filter(item => ['received', 'processing', 'ready', 'needs_review', 'failed'].includes(item.status)).length;
+      const openMandates = (state.mandates || []).filter(item => item.payment !== 'paid');
+      const overdueMandates = openMandates.filter(item => mandateAttention(item) === 'overdue').length;
+      const currentMonth = today().slice(0, 7);
+      const currentSheets = state.timesheets.filter(sheet => sheetMonth(sheet) === currentMonth).length;
+      const dueSettlements = settlementRows(byId('settlementMonth')?.value || currentMonth).filter(row => row.remaining > 0).length;
+      byId('workspaceActions').innerHTML = [
+        workspaceAction('timesheets', 'Табели', currentSheets, 'Табелей за текущий месяц'),
+        workspaceAction('inbox', 'Входящие', awaiting, awaiting ? 'Есть документы, ожидающие обработки или проверки' : 'Очередь пуста'),
+        workspaceAction('mandates', 'Мандаты', openMandates.length, overdueMandates ? `Просрочено: ${overdueMandates}` : 'Открытые дела под контролем'),
+        workspaceAction('settlements', 'Выплаты', dueSettlements, dueSettlements ? 'Сотрудники с суммой к выплате' : 'Нет открытых выплат')
+      ].join('');
     }
     function metric(name, value, hint) {
       return `<div class="metric"><div class="name">${name}</div><div class="value">${value}</div><div class="hint">${hint}</div></div>`;
@@ -4294,6 +4330,10 @@ ${worksheets}
       byId('dashboardMonth').value = '';
       byId('dashboardProject').value = '';
       renderDashboard();
+    });
+    byId('workspaceActions').addEventListener('click', event => {
+      const button = event.target.closest('[data-workspace-view]');
+      if (button) document.querySelector(`button[data-view="${button.dataset.workspaceView}"]`)?.click();
     });
     byId('addPersonBtn').addEventListener('click', addPerson);
     byId('addBulkPeopleBtn').addEventListener('click', addBulkPeople);
