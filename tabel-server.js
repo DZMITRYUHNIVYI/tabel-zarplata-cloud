@@ -512,7 +512,10 @@ function buildAiDraft(state, record, analysis) {
     }
     draft.entries = entries;
     const recognized = new Set(entries.map(entry => compactName(entry.personName)));
-    draft.excludedPeople = [...new Set(draft.excludedPeople.filter(name => !recognized.has(compactName(name))))];
+    draft.excludedPeople = [...new Set(draft.excludedPeople.filter(name => {
+      if (recognized.has(compactName(name))) return false;
+      return !matchPerson(state.people || [], name);
+    }))];
   }
   return draft;
 }
@@ -540,6 +543,13 @@ function autoApplyTimesheet(state, record) {
   const sourceAlreadyUsed = (state.timesheets || []).some(sheet => sheet.sourceIncomingId === record.id || (sheet.sourceIncomingIds || []).includes(record.id));
   if (sourceAlreadyUsed) return false;
   const knownPeople = new Set((state.people || []).map(person => person.id));
+  const project = (state.projects || []).find(item => item.id === draft.projectId);
+  if (project && draft.projectName) {
+    const aliases = Array.isArray(project.telegramAliases) ? project.telegramAliases : [];
+    if (!aliases.some(alias => compactName(alias) === compactName(draft.projectName)) && compactName(project.name) !== compactName(draft.projectName)) {
+      project.telegramAliases = [...aliases, draft.projectName];
+    }
+  }
   const entries = (draft.entries || [])
     .filter(entry => knownPeople.has(entry.personId))
     .map(entry => ({
