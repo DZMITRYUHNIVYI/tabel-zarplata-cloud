@@ -2771,6 +2771,9 @@
         return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${statusText}</span>`, received, actions];
       });
       tableTarget.innerHTML = table(['Тип', 'Чат', 'Источник', 'Результат ИИ', 'Статус', 'Получено', ''], rows, 'Входящих сообщений из Telegram пока нет');
+      tableTarget.querySelectorAll('button[data-inbox-review]').forEach(button => {
+        button.addEventListener('click', () => openTelegramReview(button.dataset.inboxReview));
+      });
       renderInboxReview();
     }
     function renderInboxReview() {
@@ -2792,7 +2795,7 @@
       const recognizedRows = (draft.entries || []).map(entry => {
         const person = getPerson(entry.personId);
         const total = (entry.hours || []).reduce((sum, value) => sum + num(value), 0);
-        return `<tr><td>${escapeHtml(person?.name || entry.personName || 'Не определён')}</td><td>${fmt(total)}</td></tr>`;
+        return `<tr><td>${escapeHtml(person?.name || entry.personName || 'Не определён')}</td><td>${trimNumber(total, 2, true)}</td></tr>`;
       }).join('');
       const timesheetDetails = isTimesheet
         ? `<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Распознанный сотрудник</th><th>Часы</th></tr></thead><tbody>${recognizedRows || '<tr><td colspan="2" class="empty">ИИ не нашёл строк с часами</td></tr>'}</tbody></table></div><p class="hint">Выберите объект и месяц. После подтверждения часы будут добавлены в его месячный табель; уже заполненные дни не сотрутся.</p>`
@@ -4257,11 +4260,6 @@ ${worksheets}
       const button = event.target.closest('button[data-photo-index]');
       if (!button) return;
       deleteSheetPhoto(num(button.dataset.photoIndex));
-    });
-    byId('inboxTable').addEventListener('click', event => {
-      const button = event.target.closest('button[data-inbox-review]');
-      if (!button) return;
-      openTelegramReview(button.dataset.inboxReview);
     });
     window.selectSheet = selectSheet;
     window.updateHour = updateHour;
