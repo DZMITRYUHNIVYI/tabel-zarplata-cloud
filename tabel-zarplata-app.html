@@ -131,6 +131,7 @@
       line-height: 1.25;
     }
     .panel-body { padding: 14px; }
+    .field-static { min-height: 38px; padding: 9px 10px; border: 1px solid var(--line); background: var(--soft); }
     label {
       display: block;
       color: var(--muted);
@@ -2791,6 +2792,10 @@
       const projectOptions = '<option value="">Не указан</option>' + projects.map(project => `<option value="${project.id}" ${project.id === draft.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('');
       const sourceLink = item.source?.localFile ? `<a class="button" target="_blank" rel="noopener" href="${CLOUD_API.replace(/\/api\/state$/, '')}/api/telegram/source/${encodeURIComponent(item.id)}">Открыть источник</a>` : '';
       const isTimesheet = item.kind === 'timesheet';
+      const timesheetMonths = Object.keys(draft.monthEntries || {}).filter(Boolean).sort();
+      const timesheetPeriod = timesheetMonths.length > 1
+        ? `<div><label>Периоды внесения</label><div class="field-static">${timesheetMonths.map(month => escapeHtml(month)).join(', ')}</div></div>`
+        : `<div><label>Месяц табеля</label><input id="telegramReviewMonth" type="month" value="${escapeHtml(draft.month || '')}"></div>`;
       const companyType = item.kind === 'company_funds' ? `<div><label>Тип операции</label><select id="telegramReviewDocumentType"><option value="unknown" ${draft.documentType === 'unknown' ? 'selected' : ''}>Выберите тип</option><option value="company_advance" ${draft.documentType === 'company_advance' ? 'selected' : ''}>Выдача рабочих денег</option><option value="receipt" ${draft.documentType === 'receipt' ? 'selected' : ''}>Чек по рабочим деньгам</option></select></div>` : '';
       const recognizedRows = (draft.entries || []).map(entry => {
         const person = getPerson(entry.personId);
@@ -2798,9 +2803,9 @@
         return `<tr><td>${escapeHtml(person?.name || entry.personName || 'Не определён')}</td><td>${trimNumber(total, 2, true)}</td></tr>`;
       }).join('');
       const timesheetDetails = isTimesheet
-        ? `<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Распознанный сотрудник</th><th>Часы</th></tr></thead><tbody>${recognizedRows || '<tr><td colspan="2" class="empty">ИИ не нашёл строк с часами</td></tr>'}</tbody></table></div><p class="hint">Выберите объект и месяц. После подтверждения часы будут добавлены в его месячный табель; уже заполненные дни не сотрутся.</p>`
+        ? `<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Распознанный сотрудник</th><th>Часы</th></tr></thead><tbody>${recognizedRows || '<tr><td colspan="2" class="empty">ИИ не нашёл строк с часами</td></tr>'}</tbody></table></div><p class="hint">После подтверждения часы попадут в месячные табели по настоящим календарным датам; уже заполненные дни не сотрутся.</p>`
         : '';
-      target.innerHTML = `<div class="panel"><div class="panel-head"><h3>Проверка: ${escapeHtml(item.source?.chatTitle || 'Telegram')}</h3><div class="toolbar">${sourceLink}<button onclick="closeTelegramReview()">Закрыть</button></div></div><div class="panel-body"><div class="grid ${isTimesheet ? 'two' : 'three'}">${isTimesheet ? '' : `<div><label>Сотрудник</label><select id="telegramReviewPerson">${personOptions}</select></div>`}<div><label>Объект</label><select id="telegramReviewProject">${projectOptions}</select></div>${isTimesheet ? `<div><label>Месяц табеля</label><input id="telegramReviewMonth" type="month" value="${escapeHtml(draft.month || '')}"></div>` : `<div><label>Дата</label><input id="telegramReviewDate" type="date" value="${escapeHtml(draft.date || today())}"></div>${companyType}<div><label>Сумма</label><input id="telegramReviewAmount" type="number" min="0" step="0.01" value="${num(draft.amount)}"></div><div><label>Категория</label><input id="telegramReviewCategory" value="${escapeHtml(draft.category || 'Другое')}"></div>`}</div><div style="height:12px"></div><label>Комментарий</label><textarea id="telegramReviewNotes" rows="2">${escapeHtml(draft.notes || draft.summary || '')}</textarea>${timesheetDetails}<div class="toolbar" style="margin-top:12px"><button class="good" onclick="saveTelegramReview('${item.id}')">${isTimesheet ? 'Подтвердить и внести в табель' : 'Подтвердить данные'}</button></div></div></div>`;
+      target.innerHTML = `<div class="panel"><div class="panel-head"><h3>Проверка: ${escapeHtml(item.source?.chatTitle || 'Telegram')}</h3><div class="toolbar">${sourceLink}<button onclick="closeTelegramReview()">Закрыть</button></div></div><div class="panel-body"><div class="grid ${isTimesheet ? 'two' : 'three'}">${isTimesheet ? '' : `<div><label>Сотрудник</label><select id="telegramReviewPerson">${personOptions}</select></div>`}<div><label>Объект</label><select id="telegramReviewProject">${projectOptions}</select></div>${isTimesheet ? timesheetPeriod : `<div><label>Дата</label><input id="telegramReviewDate" type="date" value="${escapeHtml(draft.date || today())}"></div>${companyType}<div><label>Сумма</label><input id="telegramReviewAmount" type="number" min="0" step="0.01" value="${num(draft.amount)}"></div><div><label>Категория</label><input id="telegramReviewCategory" value="${escapeHtml(draft.category || 'Другое')}"></div>`}</div><div style="height:12px"></div><label>Комментарий</label><textarea id="telegramReviewNotes" rows="2">${escapeHtml(draft.notes || draft.summary || '')}</textarea>${timesheetDetails}<div class="toolbar" style="margin-top:12px"><button class="good" onclick="saveTelegramReview('${item.id}')">${isTimesheet ? 'Подтвердить и внести в табель' : 'Подтвердить данные'}</button></div></div></div>`;
     }
     function openTelegramReview(id) {
       activeInboxReviewId = id;
@@ -2834,13 +2839,13 @@
       draft.date = byId('telegramReviewDate')?.value || draft.date || today();
       draft.notes = byId('telegramReviewNotes')?.value.trim() || '';
       if (item.kind === 'company_funds') draft.documentType = byId('telegramReviewDocumentType')?.value || 'unknown';
-      if (item.kind === 'timesheet') draft.month = byId('telegramReviewMonth')?.value || draft.month || '';
+      if (item.kind === 'timesheet' && !Object.keys(draft.monthEntries || {}).length) draft.month = byId('telegramReviewMonth')?.value || draft.month || '';
       else {
         draft.amount = num(byId('telegramReviewAmount')?.value);
         draft.category = byId('telegramReviewCategory')?.value.trim() || 'Другое';
       }
       const canUse = item.kind === 'timesheet'
-        ? Boolean(draft.projectId && draft.month && Array.isArray(draft.entries) && draft.entries.length)
+        ? Boolean(draft.projectId && Object.values(draft.monthEntries || { [draft.month || '']: draft.entries || [] }).some(entries => Array.isArray(entries) && entries.length))
         : Boolean(draft.personId && draft.amount > 0 && (item.kind !== 'company_funds' || ['company_advance', 'receipt'].includes(draft.documentType)));
       item.status = canUse ? 'ready' : 'needs_review';
       delete item.error;
@@ -2857,25 +2862,26 @@
       const draft = item.ai || {};
       const processedKind = item.kind === 'company_funds' ? draft.documentType : item.kind;
       if (processedKind === 'timesheet') {
-        if (!draft.projectId || !draft.month || !Array.isArray(draft.entries) || !draft.entries.length) {
+        const monthEntries = draft.monthEntries && typeof draft.monthEntries === 'object'
+          ? draft.monthEntries
+          : { [draft.month || '']: draft.entries || [] };
+        const months = Object.keys(monthEntries).filter(month => /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && Array.isArray(monthEntries[month]) && monthEntries[month].length);
+        if (!draft.projectId || !months.length) {
           item.status = 'needs_review';
           item.error = 'Не определены объект, месяц или сотрудники.';
           renderInbox();
           return;
         }
-        const dayCount = monthDayCount(draft.month);
-        const entries = draft.entries.filter(entry => getPerson(entry.personId)).map(entry => ({
-          personId: entry.personId,
-          hours: Array.from({ length: dayCount }, (_, index) => num(entry.hours?.[index]))
-        }));
-        if (!entries.length) {
-          item.status = 'needs_review';
-          item.error = 'ИИ не сопоставил сотрудников с вашей базой.';
-          renderInbox();
-          return;
-        }
-        const duplicate = state.timesheets.find(sheet => sheet.projectId === draft.projectId && sheetMonth(sheet) === draft.month);
-        if (duplicate) {
+        let appliedMonths = 0;
+        months.forEach(month => {
+          const dayCount = monthDayCount(month);
+          const entries = monthEntries[month].filter(entry => getPerson(entry.personId)).map(entry => ({
+            personId: entry.personId,
+            hours: Array.from({ length: dayCount }, (_, index) => num(entry.hours?.[index]))
+          }));
+          if (!entries.length) return;
+          const duplicate = state.timesheets.find(sheet => sheet.projectId === draft.projectId && sheetMonth(sheet) === month);
+          if (duplicate) {
           entries.forEach(incoming => {
             let target = duplicate.entries.find(entry => entry.personId === incoming.personId);
             if (!target) {
@@ -2890,10 +2896,18 @@
           duplicate.notes = [duplicate.notes, `Telegram: ${item.source?.chatTitle || ''}`].filter(Boolean).join('\n');
           duplicate.sourceIncomingIds = [...new Set([...(duplicate.sourceIncomingIds || []), item.id])];
           activeSheetId = duplicate.id;
-        } else {
-          const created = { id: uid(), projectId: draft.projectId, month: draft.month, weekStart: monthStart(draft.month), notes: `Telegram: ${item.source?.chatTitle || ''}`, photo: '', photos: [], entries, sourceIncomingId: item.id, sourceIncomingIds: [item.id], status: 'draft' };
+          } else {
+          const created = { id: uid(), projectId: draft.projectId, month, weekStart: monthStart(month), notes: `Telegram: ${item.source?.chatTitle || ''}`, photo: '', photos: [], entries, sourceIncomingId: item.id, sourceIncomingIds: [item.id], status: 'draft' };
           state.timesheets.push(created);
           activeSheetId = created.id;
+          }
+          appliedMonths += 1;
+        });
+        if (!appliedMonths) {
+          item.status = 'needs_review';
+          item.error = 'ИИ не сопоставил сотрудников с вашей базой.';
+          renderInbox();
+          return;
         }
       } else if (['advance', 'salary_advance', 'company_advance'].includes(processedKind)) {
         if (!draft.personId || !draft.amount) return alert('Перед внесением ИИ должен определить сотрудника и сумму.');

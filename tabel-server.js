@@ -19,7 +19,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+// Full vision model is materially more reliable on handwritten tables than the mini variant.
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1';
 const TELEGRAM_FILES_DIR = path.join(DATA_DIR, 'telegram-files');
 const TELEGRAM_FILE_LIMIT = 20 * 1024 * 1024;
 const AI_PROCESSING = new Set();
@@ -424,7 +425,7 @@ function jsonFromAi(text) {
 function aiInstructions(record) {
   const purpose = record.kind;
   const timesheetRules = purpose === 'timesheet'
-    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Обязательно заполни entries для всех людей, у которых есть ЯВНО УКАЗАННЫЕ ЧИСЛА часов. В dailyHours указывай только реальные часы напротив календарного дня; пустую ячейку считай 0. Не подменяй часы недельным итогом. Если у строки есть итог, добавь totalHours и сверь его с суммой dailyHours: при расхождении не придумывай часы. ВАЖНО: X, галочка, крестик, точка или иной знак присутствия БЕЗ числа часов не означает 8 часов и не должен становиться dailyHours. В таком случае поставь attendanceOnly: true, перечисли имена в excludedPeople и не придумывай часы. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка), attendanceOnly (true, если есть только отметки присутствия без численных часов). Для каждой записи entries при видимом итоге добавь totalHours.`
+    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Заполни entries для всех людей. У КАЖДОГО dailyHours обязательно укажи date в формате YYYY-MM-DD и hours, если на листе есть явное число часов. Не подменяй часы недельным итогом. Если у строки есть итог, добавь totalHours и сверь его с суммой dailyHours: при расхождении не придумывай часы. ВАЖНО: X, галочка, крестик, точка или иной знак присутствия БЕЗ числа часов - это отработанный день по обычной норме. Для такого дня добавь attendanceDays с date, но не выдумывай hours: сервер возьмёт норму из прошлых табелей. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Неделя может пересекать два месяца: для каждого дня используй его настоящую дату. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка), attendanceOnly (true, если весь лист заполнен отметками присутствия без численных часов). Для каждой записи entries при видимом итоге добавь totalHours, а при крестиках - attendanceDays: [{"date":"YYYY-MM-DD"}].`
     : '';
   return `Ты извлекаешь данные для программы учёта рабочих часов и выплат. Язык документа может быть русским, немецким, польским, украинским или английским.\n\nТип входящего чата: ${purpose}.\n\nВерни ТОЛЬКО корректный JSON без Markdown. Используй поля:\n{\n  "documentType": "timesheet|salary_advance|company_advance|receipt|compensation|unknown",\n  "confidence": 0.0,\n  "summary": "кратко по-русски",\n  "projectName": "название объекта или пустая строка",\n  "month": "YYYY-MM или пустая строка",\n  "weekNumber": 0,\n  "periodStart": "YYYY-MM-DD или пустая строка",\n  "periodEnd": "YYYY-MM-DD или пустая строка",\n  "date": "YYYY-MM-DD или пустая строка",\n  "personName": "ФАМИЛИЯ ИМЯ или пустая строка",\n  "amount": 0,\n  "currency": "EUR",\n  "category": "топливо|инструмент|материалы|билет|другое",\n  "notes": "что куплено или за что деньги",\n  "entries": [{"personName":"ФАМИЛИЯ ИМЯ", "dailyHours":[{"day":1,"hours":8}]}],\n  "excludedPeople": ["люди в документе, которых нельзя уверенно сопоставить"]\n}\n\nПравила: не выдумывай значения. В чате рабочих денег отличи выдачу денег сотруднику от чека за уже выданные средства. В чате компенсаций это личные деньги сотрудника, которые фирма должна вернуть. При неопределённости укажи documentType unknown и низкую confidence.${timesheetRules}`;
 }
@@ -493,34 +494,82 @@ function buildAiDraft(state, record, analysis) {
     category: String(analysis.category || 'Другое'),
     notes: String(analysis.notes || ''),
     attendanceOnly: Boolean(analysis.attendanceOnly),
+    attendanceDerived: false,
+    warnings: [],
     excludedPeople: Array.isArray(analysis.excludedPeople) ? analysis.excludedPeople.map(String).filter(Boolean).slice(0, 50) : [],
   };
   draft.reimbursementMonth = nextMonth(draft.date);
   if (documentType === 'timesheet') {
-    const dayCount = draft.month ? new Date(Number(draft.month.slice(0, 4)), Number(draft.month.slice(5, 7)), 0).getDate() : 31;
-    const entries = [];
+    const entriesByMonth = new Map();
+    const monthForDate = value => validDate(value, '').slice(0, 7);
+    const fallbackDate = day => {
+      const numericDay = Number(day);
+      if (!draft.month || !Number.isInteger(numericDay) || numericDay < 1 || numericDay > daysInMonth(draft.month)) return '';
+      return `${draft.month}-${String(numericDay).padStart(2, '0')}`;
+    };
+    const standardShiftHours = personId => {
+      const valuesFor = predicate => (state.timesheets || []).flatMap(sheet => (sheet.entries || [])
+        .filter(entry => entry.personId === personId && predicate(sheet))
+        .flatMap(entry => (entry.hours || []).map(Number).filter(hours => hours >= 3 && hours <= 16)));
+      const mostFrequent = values => {
+        const counts = new Map();
+        values.forEach(value => {
+          const rounded = Math.round(value * 4) / 4;
+          counts.set(rounded, (counts.get(rounded) || 0) + 1);
+        });
+        return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] || 0;
+      };
+      return mostFrequent(valuesFor(sheet => sheet.projectId === draft.projectId))
+        || mostFrequent(valuesFor(() => true))
+        || Math.max(1, Number(state.telegram?.defaultAttendanceHours) || 10);
+    };
+    const addEntry = (month, person, hours) => {
+      if (!month || !person || !hours.some(value => Number(value) > 0)) return;
+      const dayCount = daysInMonth(month);
+      const bucket = entriesByMonth.get(month) || new Map();
+      const existing = bucket.get(person.id) || { personId: person.id, personName: person.name, hours: Array.from({ length: dayCount }, () => 0) };
+      existing.hours = Array.from({ length: dayCount }, (_, index) => Math.max(Number(existing.hours[index]) || 0, Number(hours[index]) || 0));
+      bucket.set(person.id, existing);
+      entriesByMonth.set(month, bucket);
+    };
     for (const row of Array.isArray(analysis.entries) ? analysis.entries : []) {
       const match = matchPerson(state.people || [], row?.personName);
       if (!match) {
         if (row?.personName) draft.excludedPeople.push(String(row.personName));
         continue;
       }
-      const hours = Array.from({ length: dayCount }, () => 0);
+      const rowMonths = new Map();
+      const addDay = (value, hoursValue, isAttendance) => {
+        const date = validDate(value?.date, '') || fallbackDate(value?.day);
+        const month = monthForDate(date);
+        if (!month) return;
+        const day = Number(date.slice(-2));
+        const hours = rowMonths.get(month) || Array.from({ length: daysInMonth(month) }, () => 0);
+        const valueForDay = isAttendance ? standardShiftHours(match.person.id) : Number(hoursValue);
+        if (Number.isFinite(valueForDay) && valueForDay >= 0 && valueForDay <= 24) {
+          hours[day - 1] = Math.max(hours[day - 1] || 0, valueForDay);
+          if (isAttendance) draft.attendanceDerived = true;
+        }
+        rowMonths.set(month, hours);
+      };
       for (const item of Array.isArray(row.dailyHours) ? row.dailyHours : []) {
-        const day = Number(item?.day);
-        const hoursValue = Number(item?.hours);
-        if (day >= 1 && day <= dayCount && Number.isFinite(hoursValue) && hoursValue >= 0 && hoursValue <= 24) hours[day - 1] = hoursValue;
+        addDay(item, item?.hours, false);
       }
+      for (const item of Array.isArray(row.attendanceDays) ? row.attendanceDays : []) addDay(item, 0, true);
       const statedTotal = Number(row?.totalHours) || 0;
-      const extractedTotal = hours.reduce((total, value) => total + value, 0);
+      const extractedTotal = [...rowMonths.values()].flat().reduce((total, value) => total + value, 0);
       if (statedTotal > 0 && Math.abs(statedTotal - extractedTotal) > 0.1) {
         draft.excludedPeople.push(String(row.personName));
+        draft.warnings.push(`Сумма часов не совпала у ${match.person.name}.`);
         continue;
       }
-      entries.push({ personId: match.person.id, personName: match.person.name, hours });
+      rowMonths.forEach((hours, month) => addEntry(month, match.person, hours));
     }
-    draft.entries = entries;
-    const recognized = new Set(entries.map(entry => compactName(entry.personName)));
+    draft.monthEntries = Object.fromEntries([...entriesByMonth.entries()].map(([month, entries]) => [month, [...entries.values()]]));
+    draft.months = Object.keys(draft.monthEntries).sort();
+    draft.month = draft.months[0] || draft.month;
+    draft.entries = draft.monthEntries[draft.month] || [];
+    const recognized = new Set(Object.values(draft.monthEntries).flat().map(entry => compactName(entry.personName)));
     draft.excludedPeople = [...new Set(draft.excludedPeople.filter(name => {
       if (recognized.has(compactName(name))) return false;
       return !matchPerson(state.people || [], name);
@@ -531,8 +580,12 @@ function buildAiDraft(state, record, analysis) {
 
 function isReadyDraft(record) {
   const draft = record.ai || {};
-  const spansMonths = draft.periodStart && draft.periodEnd && draft.periodStart.slice(0, 7) !== draft.periodEnd.slice(0, 7);
-  if (record.kind === 'timesheet') return !spansMonths && !draft.attendanceOnly && Boolean(draft.projectId && draft.month && draft.entries?.length);
+  if (record.kind === 'timesheet') {
+    const monthEntries = draft.monthEntries && typeof draft.monthEntries === 'object'
+      ? draft.monthEntries
+      : { [draft.month || '']: draft.entries || [] };
+    return Boolean(draft.projectId && Object.values(monthEntries).some(entries => Array.isArray(entries) && entries.length));
+  }
   if (record.kind === 'company_funds' && !['company_advance', 'receipt'].includes(draft.documentType)) return false;
   return Boolean(draft.personId && Number(draft.amount) > 0);
 }
@@ -547,10 +600,15 @@ function daysInMonth(month) {
 
 function autoApplyTimesheet(state, record) {
   const draft = record.ai || {};
-  if (record.kind !== 'timesheet' || draft.attendanceOnly || !isReadyDraft(record)) return false;
+  if (record.kind !== 'timesheet' || !isReadyDraft(record)) return false;
   if (state.telegram?.autoApplyTimesheets === false) return false;
-  const dayCount = daysInMonth(draft.month);
-  const sourceAlreadyUsed = (state.timesheets || []).some(sheet => sheet.sourceIncomingId === record.id || (sheet.sourceIncomingIds || []).includes(record.id));
+  const monthEntries = draft.monthEntries && typeof draft.monthEntries === 'object'
+    ? draft.monthEntries
+    : { [draft.month || '']: draft.entries || [] };
+  const months = Object.keys(monthEntries).filter(month => validMonth(month) && Array.isArray(monthEntries[month]) && monthEntries[month].length);
+  const sourceAlreadyUsed = months.length > 0 && months.every(month => (state.timesheets || []).some(sheet => sheet.projectId === draft.projectId
+    && validMonth(sheet.month || sheet.weekStart?.slice(0, 7)) === month
+    && (sheet.sourceIncomingId === record.id || (sheet.sourceIncomingIds || []).includes(record.id))));
   if (sourceAlreadyUsed) return false;
   const knownPeople = new Set((state.people || []).map(person => person.id));
   const project = (state.projects || []).find(item => item.id === draft.projectId);
@@ -560,46 +618,34 @@ function autoApplyTimesheet(state, record) {
       project.telegramAliases = [...aliases, draft.projectName];
     }
   }
-  const entries = (draft.entries || [])
-    .filter(entry => knownPeople.has(entry.personId))
-    .map(entry => ({
-      personId: entry.personId,
-      hours: Array.from({ length: dayCount }, (_, index) => Number(entry.hours?.[index]) || 0),
-    }));
-  if (!entries.length) return false;
-
-  let sheet = (state.timesheets || []).find(item => item.projectId === draft.projectId && validMonth(item.month || item.weekStart?.slice(0, 7)) === draft.month);
-  if (!sheet) {
-    sheet = {
-      id: serverUid(),
-      projectId: draft.projectId,
-      month: draft.month,
-      weekStart: `${draft.month}-01`,
-      notes: '',
-      photo: '',
-      photos: [],
-      entries: [],
-      sourceIncomingIds: [],
-      status: 'draft',
-    };
-    state.timesheets = Array.isArray(state.timesheets) ? state.timesheets : [];
-    state.timesheets.push(sheet);
-  }
-  sheet.entries = Array.isArray(sheet.entries) ? sheet.entries : [];
-  for (const incoming of entries) {
-    let target = sheet.entries.find(entry => entry.personId === incoming.personId);
-    if (!target) {
-      target = { personId: incoming.personId, hours: Array.from({ length: dayCount }, () => 0) };
-      sheet.entries.push(target);
+  let applied = false;
+  for (const month of months) {
+    const dayCount = daysInMonth(month);
+    const entries = (monthEntries[month] || [])
+      .filter(entry => knownPeople.has(entry.personId))
+      .map(entry => ({ personId: entry.personId, hours: Array.from({ length: dayCount }, (_, index) => Number(entry.hours?.[index]) || 0) }));
+    if (!entries.length) continue;
+    let sheet = (state.timesheets || []).find(item => item.projectId === draft.projectId && validMonth(item.month || item.weekStart?.slice(0, 7)) === month);
+    if (!sheet) {
+      sheet = { id: serverUid(), projectId: draft.projectId, month, weekStart: `${month}-01`, notes: '', photo: '', photos: [], entries: [], sourceIncomingIds: [], status: 'draft' };
+      state.timesheets = Array.isArray(state.timesheets) ? state.timesheets : [];
+      state.timesheets.push(sheet);
     }
-    target.hours = Array.from({ length: dayCount }, (_, index) => {
-      const incomingHours = Number(incoming.hours?.[index]) || 0;
-      return incomingHours > 0 ? incomingHours : Number(target.hours?.[index]) || 0;
-    });
+    sheet.entries = Array.isArray(sheet.entries) ? sheet.entries : [];
+    for (const incoming of entries) {
+      let target = sheet.entries.find(entry => entry.personId === incoming.personId);
+      if (!target) {
+        target = { personId: incoming.personId, hours: Array.from({ length: dayCount }, () => 0) };
+        sheet.entries.push(target);
+      }
+      target.hours = Array.from({ length: dayCount }, (_, index) => Number(incoming.hours?.[index]) || Number(target.hours?.[index]) || 0);
+    }
+    const origin = `Telegram: ${record.source?.chatTitle || 'Табели'}`;
+    if (!String(sheet.notes || '').includes(origin)) sheet.notes = [sheet.notes, origin].filter(Boolean).join('\n');
+    sheet.sourceIncomingIds = [...new Set([...(sheet.sourceIncomingIds || []), record.id])];
+    applied = true;
   }
-  const origin = `Telegram: ${record.source?.chatTitle || 'Табели'}`;
-  if (!String(sheet.notes || '').includes(origin)) sheet.notes = [sheet.notes, origin].filter(Boolean).join('\n');
-  sheet.sourceIncomingIds = [...new Set([...(sheet.sourceIncomingIds || []), record.id])];
+  if (!applied) return false;
   record.status = 'applied';
   record.autoApplied = true;
   record.appliedAt = new Date().toISOString();
