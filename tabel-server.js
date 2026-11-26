@@ -422,7 +422,7 @@ function jsonFromAi(text) {
 function aiInstructions(record) {
   const purpose = record.kind;
   const timesheetRules = purpose === 'timesheet'
-    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Обязательно заполни entries для всех людей, у которых есть ЯВНО УКАЗАННЫЕ ЧИСЛА часов. В dailyHours указывай только реальные часы напротив календарного дня; пустую ячейку считай 0. Не подменяй часы недельным итогом. ВАЖНО: X, галочка, крестик, точка или иной знак присутствия БЕЗ числа часов не означает 8 часов и не должен становиться dailyHours. В таком случае поставь attendanceOnly: true, перечисли имена в excludedPeople и не придумывай часы. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка), attendanceOnly (true, если есть только отметки присутствия без численных часов).`
+    ? `\n\nЭТО ТАБЕЛЬ. Это главная задача: внимательно прочитай КАЖДУЮ строку сотрудника и КАЖДУЮ колонку с датой. Обязательно заполни entries для всех людей, у которых есть ЯВНО УКАЗАННЫЕ ЧИСЛА часов. В dailyHours указывай только реальные часы напротив календарного дня; пустую ячейку считай 0. Не подменяй часы недельным итогом. Если у строки есть итог, добавь totalHours и сверь его с суммой dailyHours: при расхождении не придумывай часы. ВАЖНО: X, галочка, крестик, точка или иной знак присутствия БЕЗ числа часов не означает 8 часов и не должен становиться dailyHours. В таком случае поставь attendanceOnly: true, перечисли имена в excludedPeople и не придумывай часы. Если в шапке указана неделя, заполни weekNumber, periodStart и periodEnd. Если видны только даты без года, определи год по документу, подписи или дате отправки. Не исключай человека только потому, что он не известен программе: запиши его имя в entries, а также добавь в excludedPeople.\n\nДобавь поля weekNumber (номер недели или 0), periodStart (YYYY-MM-DD или пустая строка), periodEnd (YYYY-MM-DD или пустая строка), attendanceOnly (true, если есть только отметки присутствия без численных часов). Для каждой записи entries при видимом итоге добавь totalHours.`
     : '';
   return `Ты извлекаешь данные для программы учёта рабочих часов и выплат. Язык документа может быть русским, немецким, польским, украинским или английским.\n\nТип входящего чата: ${purpose}.\n\nВерни ТОЛЬКО корректный JSON без Markdown. Используй поля:\n{\n  "documentType": "timesheet|salary_advance|company_advance|receipt|compensation|unknown",\n  "confidence": 0.0,\n  "summary": "кратко по-русски",\n  "projectName": "название объекта или пустая строка",\n  "month": "YYYY-MM или пустая строка",\n  "weekNumber": 0,\n  "periodStart": "YYYY-MM-DD или пустая строка",\n  "periodEnd": "YYYY-MM-DD или пустая строка",\n  "date": "YYYY-MM-DD или пустая строка",\n  "personName": "ФАМИЛИЯ ИМЯ или пустая строка",\n  "amount": 0,\n  "currency": "EUR",\n  "category": "топливо|инструмент|материалы|билет|другое",\n  "notes": "что куплено или за что деньги",\n  "entries": [{"personName":"ФАМИЛИЯ ИМЯ", "dailyHours":[{"day":1,"hours":8}]}],\n  "excludedPeople": ["люди в документе, которых нельзя уверенно сопоставить"]\n}\n\nПравила: не выдумывай значения. В чате рабочих денег отличи выдачу денег сотруднику от чека за уже выданные средства. В чате компенсаций это личные деньги сотрудника, которые фирма должна вернуть. При неопределённости укажи documentType unknown и низкую confidence.${timesheetRules}`;
 }
@@ -509,6 +509,12 @@ function buildAiDraft(state, record, analysis) {
         const hoursValue = Number(item?.hours);
         if (day >= 1 && day <= dayCount && Number.isFinite(hoursValue) && hoursValue >= 0 && hoursValue <= 24) hours[day - 1] = hoursValue;
       }
+      const statedTotal = Number(row?.totalHours) || 0;
+      const extractedTotal = hours.reduce((total, value) => total + value, 0);
+      if (statedTotal > 0 && Math.abs(statedTotal - extractedTotal) > 0.1) {
+        draft.excludedPeople.push(String(row.personName));
+        continue;
+      }
       entries.push({ personId: match.person.id, personName: match.person.name, hours });
     }
     draft.entries = entries;
@@ -523,7 +529,8 @@ function buildAiDraft(state, record, analysis) {
 
 function isReadyDraft(record) {
   const draft = record.ai || {};
-  if (record.kind === 'timesheet') return !draft.attendanceOnly && Boolean(draft.projectId && draft.month && draft.entries?.length);
+  const spansMonths = draft.periodStart && draft.periodEnd && draft.periodStart.slice(0, 7) !== draft.periodEnd.slice(0, 7);
+  if (record.kind === 'timesheet') return !spansMonths && !draft.attendanceOnly && Boolean(draft.projectId && draft.month && draft.entries?.length);
   if (record.kind === 'company_funds' && !['company_advance', 'receipt'].includes(draft.documentType)) return false;
   return Boolean(draft.personId && Number(draft.amount) > 0);
 }
