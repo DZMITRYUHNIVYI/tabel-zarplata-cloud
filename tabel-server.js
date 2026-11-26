@@ -279,6 +279,17 @@ function nameSimilarity(left, right) {
   return Math.max(wordSimilarity(left, right), spelling);
 }
 
+function projectTokenMatch(left, right) {
+  const leftTokens = compactName(left).split(' ').filter(token => token.length >= 4);
+  const rightTokens = compactName(right).split(' ').filter(token => token.length >= 4);
+  const shared = leftTokens.filter(token => rightTokens.includes(token));
+  return {
+    count: new Set(shared).size,
+    coverage: shared.length / Math.max(1, Math.min(leftTokens.length, rightTokens.length)),
+    hasDistinctiveMatch: shared.some(token => token.length >= 8),
+  };
+}
+
 function matchPerson(people, name) {
   const needle = compactName(name);
   if (!needle) return null;
@@ -297,9 +308,15 @@ function matchProject(projects, name) {
   const exact = projects.find(project => namesFor(project).some(projectName => compactName(projectName) === needle));
   if (exact) return { project: exact, confidence: 1 };
   const ranked = projects
-    .map(project => ({ project, confidence: Math.max(...namesFor(project).map(projectName => nameSimilarity(projectName, name))) }))
+    .map(project => {
+      const candidates = namesFor(project).map(projectName => ({ confidence: nameSimilarity(projectName, name), tokens: projectTokenMatch(projectName, name) }));
+      return { project, ...candidates.sort((a, b) => b.confidence - a.confidence)[0] };
+    })
     .sort((a, b) => b.confidence - a.confidence);
-  return ranked[0]?.confidence >= 0.75 ? ranked[0] : null;
+  const best = ranked[0];
+  if (!best) return null;
+  if (best.confidence >= 0.75 || (best.tokens.count >= 2 && best.tokens.coverage >= 0.65 && best.tokens.hasDistinctiveMatch)) return best;
+  return null;
 }
 
 function validMonth(value) {
