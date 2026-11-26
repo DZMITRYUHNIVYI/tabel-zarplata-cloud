@@ -27,6 +27,7 @@ const AI_QUEUE = [];
 const AI_QUEUED = new Set();
 const AI_CONCURRENCY = Math.max(1, Math.min(3, Number(process.env.AI_CONCURRENCY || 2)));
 const OPENAI_TIMEOUT_MS = Math.max(30_000, Number(process.env.OPENAI_TIMEOUT_MS || 120_000));
+let TELEGRAM_WEBHOOK_STATUS = { configured: Boolean(TELEGRAM_BOT_TOKEN && TELEGRAM_WEBHOOK_SECRET && PUBLIC_BASE_URL), checkedAt: null };
 
 function send(res, status, body, type = 'text/plain; charset=utf-8') {
   res.writeHead(status, {
@@ -141,6 +142,7 @@ function healthState() {
     savedAt: payload.savedAt,
     stats: payload.stats,
     dataDir: DATA_DIR,
+    telegramWebhook: TELEGRAM_WEBHOOK_STATUS,
   };
 }
 
@@ -772,9 +774,31 @@ async function registerTelegramWebhook() {
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.description || 'Telegram rejected the webhook');
+    await refreshTelegramWebhookStatus();
     console.log(`Telegram webhook: ${webhookUrl}`);
   } catch (error) {
+    TELEGRAM_WEBHOOK_STATUS = { configured: true, checkedAt: new Date().toISOString(), error: error.message || 'Webhook setup failed' };
     console.error(`Telegram webhook setup failed: ${error.message}`);
+  }
+}
+
+async function refreshTelegramWebhookStatus() {
+  if (!TELEGRAM_BOT_TOKEN) return;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo`);
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.description || 'Telegram rejected diagnostics');
+    const info = result.result || {};
+    TELEGRAM_WEBHOOK_STATUS = {
+      configured: Boolean(info.url),
+      checkedAt: new Date().toISOString(),
+      pendingUpdates: Number(info.pending_update_count) || 0,
+      lastError: String(info.last_error_message || ''),
+      lastErrorDate: info.last_error_date ? new Date(Number(info.last_error_date) * 1000).toISOString() : '',
+      allowedUpdates: Array.isArray(info.allowed_updates) ? info.allowed_updates : [],
+    };
+  } catch (error) {
+    TELEGRAM_WEBHOOK_STATUS = { configured: true, checkedAt: new Date().toISOString(), error: error.message || 'Telegram diagnostics failed' };
   }
 }
 
