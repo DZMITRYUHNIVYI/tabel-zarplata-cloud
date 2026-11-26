@@ -2813,12 +2813,20 @@
       const draft = item.ai = item.ai || {};
       const person = getPerson(byId('telegramReviewPerson')?.value);
       const project = getProject(byId('telegramReviewProject')?.value);
+      const detectedProjectName = draft.projectName || '';
       if (item.kind !== 'timesheet') {
         draft.personId = person?.id || '';
         draft.personName = person?.name || draft.personName || '';
       }
       draft.projectId = project?.id || '';
       draft.projectName = project?.name || draft.projectName || '';
+      if (item.kind === 'timesheet' && project && detectedProjectName) {
+        project.telegramAliases = Array.isArray(project.telegramAliases) ? project.telegramAliases : [];
+        const normalized = value => String(value || '').trim().toLocaleLowerCase();
+        if (!project.telegramAliases.some(alias => normalized(alias) === normalized(detectedProjectName)) && normalized(project.name) !== normalized(detectedProjectName)) {
+          project.telegramAliases.push(detectedProjectName.trim());
+        }
+      }
       draft.date = byId('telegramReviewDate')?.value || draft.date || today();
       draft.notes = byId('telegramReviewNotes')?.value.trim() || '';
       if (item.kind === 'company_funds') draft.documentType = byId('telegramReviewDocumentType')?.value || 'unknown';

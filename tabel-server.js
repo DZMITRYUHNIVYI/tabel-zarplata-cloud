@@ -293,10 +293,11 @@ function matchPerson(people, name) {
 function matchProject(projects, name) {
   const needle = compactName(name);
   if (!needle) return null;
-  const exact = projects.find(project => compactName(project.name) === needle);
+  const namesFor = project => [project.name, ...(Array.isArray(project.telegramAliases) ? project.telegramAliases : [])].filter(Boolean);
+  const exact = projects.find(project => namesFor(project).some(projectName => compactName(projectName) === needle));
   if (exact) return { project: exact, confidence: 1 };
   const ranked = projects
-    .map(project => ({ project, confidence: nameSimilarity(project.name, name) }))
+    .map(project => ({ project, confidence: Math.max(...namesFor(project).map(projectName => nameSimilarity(projectName, name))) }))
     .sort((a, b) => b.confidence - a.confidence);
   return ranked[0]?.confidence >= 0.75 ? ranked[0] : null;
 }
