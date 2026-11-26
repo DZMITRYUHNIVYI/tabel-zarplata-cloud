@@ -432,7 +432,10 @@ function aiInstructions(record) {
 
 async function askOpenAi(record, attachment) {
   if (!OPENAI_API_KEY) throw new Error('Не задан ключ OpenAI API.');
-  const content = [{ type: 'input_text', text: `${aiInstructions(record)}\n\nПодпись к сообщению: ${record.source?.caption || 'нет'}` }];
+  const signaturePrompt = record.kind === 'timesheet'
+    ? '\n\nОтдельно проверь нижнюю часть документа: есть ли собственноручная подпись ответственного по объекту, бауляйтера или руководителя. Верни signaturePresent (true/false), signerName, signerRole и signatureConfidence от 0 до 1. Подпись сотрудника не считай подписью ответственного.'
+    : '';
+  const content = [{ type: 'input_text', text: `${aiInstructions(record)}${signaturePrompt}\n\nПодпись к сообщению: ${record.source?.caption || 'нет'}` }];
   if (attachment) {
     const dataUrl = `data:${attachment.mimeType};base64,${attachment.bytes.toString('base64')}`;
     if (attachment.mimeType.startsWith('image/')) content.push({ type: 'input_image', image_url: dataUrl, detail: 'high' });
@@ -495,6 +498,10 @@ function buildAiDraft(state, record, analysis) {
     notes: String(analysis.notes || ''),
     attendanceOnly: Boolean(analysis.attendanceOnly),
     attendanceDerived: false,
+    signaturePresent: Boolean(analysis.signaturePresent),
+    signerName: String(analysis.signerName || ''),
+    signerRole: String(analysis.signerRole || ''),
+    signatureConfidence: Math.max(0, Math.min(1, Number(analysis.signatureConfidence) || 0)),
     warnings: [],
     excludedPeople: Array.isArray(analysis.excludedPeople) ? analysis.excludedPeople.map(String).filter(Boolean).slice(0, 50) : [],
   };
@@ -584,7 +591,7 @@ function isReadyDraft(record) {
     const monthEntries = draft.monthEntries && typeof draft.monthEntries === 'object'
       ? draft.monthEntries
       : { [draft.month || '']: draft.entries || [] };
-    return Boolean(draft.projectId && Object.values(monthEntries).some(entries => Array.isArray(entries) && entries.length));
+    return Boolean((draft.signaturePresent || draft.adminApproved) && draft.projectId && Object.values(monthEntries).some(entries => Array.isArray(entries) && entries.length));
   }
   if (record.kind === 'company_funds' && !['company_advance', 'receipt'].includes(draft.documentType)) return false;
   return Boolean(draft.personId && Number(draft.amount) > 0);
@@ -693,6 +700,34 @@ function rollbackTimesheetApplication(state, record) {
   return true;
 }
 
+async function notifyApprovalGroup(state, record) {
+  const chat = (state.telegram?.chats || []).find(item => item.purpose === 'approval');
+  if (!chat?.chatId || !TELEGRAM_BOT_TOKEN || record.approvalNotifiedAt) return;
+  const draft = record.ai || {};
+  const reason = !draft.signaturePresent
+    ? 'Нет подписи ответственного по объекту.'
+    : draft.warnings?.[0] || 'ИИ не смог уверенно подтвердить все данные.';
+  const text = [
+    'Требуется подтверждение табеля',
+    `Объект: ${draft.projectName || 'не определён'}`,
+    `Период: ${draft.periodStart || draft.month || 'не определён'}`,
+    `Причина: ${reason}`,
+    'Откройте программу, раздел «Входящие», чтобы подтвердить или отклонить.',
+  ].join('\n');
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat.chatId, text }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.description || 'Telegram rejected approval notification');
+    record.approvalNotifiedAt = new Date().toISOString();
+  } catch (error) {
+    console.error(`Telegram approval notification failed: ${error.message}`);
+  }
+}
+
 async function processTelegramIncoming(recordId) {
   if (AI_PROCESSING.has(recordId)) return { queued: true };
   AI_PROCESSING.add(recordId);
@@ -718,6 +753,7 @@ async function processTelegramIncoming(recordId) {
     const autoApplied = autoApplyTimesheet(latest, latestRecord);
     latestRecord.processedAt = new Date().toISOString();
     if (attachment) latestRecord.source.localFile = path.basename(attachment.filePath);
+    if (latestRecord.status === 'needs_review') await notifyApprovalGroup(latest, latestRecord);
     writeSystemState(latest);
     return { ok: true, status: latestRecord.status, autoApplied, record: latestRecord };
   } catch (error) {
@@ -766,7 +802,7 @@ function recoverInterruptedAiProcessing() {
 
 function messageKind(state, chatId) {
   const config = (state.telegram?.chats || []).find(chat => String(chat.chatId) === String(chatId));
-  return ['timesheet', 'salary_advance', 'company_funds', 'advance', 'receipt', 'compensation'].includes(config?.purpose) ? config.purpose : 'unconfigured';
+  return ['timesheet', 'salary_advance', 'company_funds', 'advance', 'receipt', 'compensation', 'approval'].includes(config?.purpose) ? config.purpose : 'unconfigured';
 }
 
 function appendTelegramIncoming(update) {
@@ -792,6 +828,8 @@ function appendTelegramIncoming(update) {
       chatId: String(message.chat.id),
       chatTitle: message.chat.title || message.chat.username || 'Telegram',
       messageId: message.message_id,
+      senderId: String(message.from?.id || ''),
+      senderName: [message.from?.first_name, message.from?.last_name].filter(Boolean).join(' '),
       caption,
       ...attachment,
     },
@@ -877,7 +915,7 @@ const server = http.createServer(async (req, res) => {
       }
       const update = JSON.parse(await readBody(req));
       const result = appendTelegramIncoming(update);
-      if (result.record?.kind && result.record.kind !== 'unconfigured') queueTelegramProcessing(result.record.id);
+      if (result.record?.kind && !['unconfigured', 'approval'].includes(result.record.kind)) queueTelegramProcessing(result.record.id);
       return send(res, 200, JSON.stringify({ ok: true, ...result }), 'application/json; charset=utf-8');
     }
 
