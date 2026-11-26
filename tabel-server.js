@@ -555,6 +555,16 @@ const server = http.createServer(async (req, res) => {
       return send(res, result.ok ? 200 : 422, JSON.stringify(result), 'application/json; charset=utf-8');
     }
 
+    const telegramSourceMatch = url.pathname.match(/^\/api\/telegram\/source\/([^/]+)$/);
+    if (req.method === 'GET' && telegramSourceMatch) {
+      const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
+      const record = current?.telegram?.inbox?.find(item => item.id === decodeURIComponent(telegramSourceMatch[1]));
+      const fileName = path.basename(record?.source?.localFile || '');
+      const filePath = fileName ? path.join(TELEGRAM_FILES_DIR, fileName) : '';
+      if (!record || !fileName || !filePath.startsWith(`${TELEGRAM_FILES_DIR}${path.sep}`) || !fs.existsSync(filePath)) return send(res, 404, 'Источник не найден');
+      return serveFile(res, filePath, record.source?.mimeType || 'application/octet-stream');
+    }
+
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/tabel-zarplata-app.html')) {
       return serveFile(res, APP_FILE, 'text/html; charset=utf-8');
     }

@@ -1681,6 +1681,7 @@
           <div class="grid three" id="inboxMetrics"></div>
           <div style="height:14px"></div>
           <div class="table-wrap"><table id="inboxTable"></table></div>
+          <div id="inboxReviewPanel" style="margin-top:14px"></div>
         </div>
       </div>
     </section>
@@ -1721,6 +1722,7 @@
     let mobileWeekIndex = 0;
     let tableSumSelection = null;
     let isSelectingTableSum = false;
+    let activeInboxReviewId = null;
 
     function applyUiZoom(value) {
       uiZoom = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, Math.round(value * 100) / 100));
@@ -2761,12 +2763,65 @@
           ? `<div class="row-actions"><select id="telegram-chat-${item.id}"><option value="timesheet">Табели</option><option value="salary_advance">Личные авансы</option><option value="company_funds">Рабочие деньги и чеки</option><option value="compensation">Компенсации</option></select><button class="good" onclick="configureTelegramChat('${item.id}')">Назначить чат</button></div>`
           : '';
         const canProcess = ['received', 'failed'].includes(item.status) && item.kind !== 'unconfigured';
+        const reviewButton = item.status === 'needs_review' ? `<button onclick="openTelegramReview('${item.id}')">Проверить</button>` : '';
         const actions = item.status === 'applied' || item.status === 'rejected'
           ? ''
-          : chatSetup || `<div class="row-actions">${canProcess ? `<button onclick="processTelegramIncoming('${item.id}')">${item.status === 'failed' ? 'Повторить ИИ' : 'Распознать ИИ'}</button>` : ''}${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
+          : chatSetup || `<div class="row-actions">${canProcess ? `<button onclick="processTelegramIncoming('${item.id}')">${item.status === 'failed' ? 'Повторить ИИ' : 'Распознать ИИ'}</button>` : ''}${reviewButton}${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
         return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${incomingStatusText(item.status)}</span>`, received, actions];
       });
       tableTarget.innerHTML = table(['Тип', 'Чат', 'Источник', 'Результат ИИ', 'Статус', 'Получено', ''], rows, 'Входящих сообщений из Telegram пока нет');
+      renderInboxReview();
+    }
+    function renderInboxReview() {
+      const target = byId('inboxReviewPanel');
+      if (!target) return;
+      const item = state.telegram?.inbox?.find(record => record.id === activeInboxReviewId);
+      if (!item || item.status === 'applied' || item.status === 'rejected') {
+        target.innerHTML = '';
+        return;
+      }
+      const draft = item.ai || {};
+      const people = peopleAlphabetically();
+      const projects = projectsAlphabetically();
+      const personOptions = '<option value="">Не определён</option>' + people.map(person => `<option value="${person.id}" ${person.id === draft.personId ? 'selected' : ''}>${escapeHtml(person.name)}</option>`).join('');
+      const projectOptions = '<option value="">Не указан</option>' + projects.map(project => `<option value="${project.id}" ${project.id === draft.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('');
+      const sourceLink = item.source?.localFile ? `<a class="button" target="_blank" rel="noopener" href="${CLOUD_API.replace(/\/api\/state$/, '')}/api/telegram/source/${encodeURIComponent(item.id)}">Открыть источник</a>` : '';
+      const isTimesheet = item.kind === 'timesheet';
+      target.innerHTML = `<div class="panel"><div class="panel-head"><h3>Проверка: ${escapeHtml(item.source?.chatTitle || 'Telegram')}</h3><div class="toolbar">${sourceLink}<button onclick="closeTelegramReview()">Закрыть</button></div></div><div class="panel-body"><div class="grid ${isTimesheet ? 'two' : 'three'}"><div><label>Сотрудник</label><select id="telegramReviewPerson">${personOptions}</select></div><div><label>Объект</label><select id="telegramReviewProject">${projectOptions}</select></div><div><label>Дата</label><input id="telegramReviewDate" type="date" value="${escapeHtml(draft.date || today())}"></div>${isTimesheet ? `<div><label>Месяц табеля</label><input id="telegramReviewMonth" type="month" value="${escapeHtml(draft.month || '')}"></div>` : `<div><label>Сумма</label><input id="telegramReviewAmount" type="number" min="0" step="0.01" value="${num(draft.amount)}"></div><div><label>Категория</label><input id="telegramReviewCategory" value="${escapeHtml(draft.category || 'Другое')}"></div>`}</div><div style="height:12px"></div><label>Комментарий</label><textarea id="telegramReviewNotes" rows="2">${escapeHtml(draft.notes || draft.summary || '')}</textarea>${isTimesheet ? `<p class="hint">Для табеля сначала выберите объект и месяц. Если ИИ не прочитал часы, откройте источник и внесите часы в табель вручную: исходное сообщение и файл сохраняются.</p>` : ''}<div class="toolbar" style="margin-top:12px"><button class="good" onclick="saveTelegramReview('${item.id}')">Подтвердить данные</button></div></div></div>`;
+    }
+    function openTelegramReview(id) {
+      activeInboxReviewId = id;
+      renderInboxReview();
+      byId('inboxReviewPanel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function closeTelegramReview() {
+      activeInboxReviewId = null;
+      renderInboxReview();
+    }
+    function saveTelegramReview(id) {
+      const item = state.telegram?.inbox?.find(record => record.id === id);
+      if (!item) return;
+      const draft = item.ai = item.ai || {};
+      const person = getPerson(byId('telegramReviewPerson')?.value);
+      const project = getProject(byId('telegramReviewProject')?.value);
+      draft.personId = person?.id || '';
+      draft.personName = person?.name || draft.personName || '';
+      draft.projectId = project?.id || '';
+      draft.projectName = project?.name || draft.projectName || '';
+      draft.date = byId('telegramReviewDate')?.value || draft.date || today();
+      draft.notes = byId('telegramReviewNotes')?.value.trim() || '';
+      if (item.kind === 'timesheet') draft.month = byId('telegramReviewMonth')?.value || draft.month || '';
+      else {
+        draft.amount = num(byId('telegramReviewAmount')?.value);
+        draft.category = byId('telegramReviewCategory')?.value.trim() || 'Другое';
+      }
+      const canUse = item.kind === 'timesheet'
+        ? Boolean(draft.projectId && draft.month && Array.isArray(draft.entries) && draft.entries.length)
+        : Boolean(draft.personId && draft.amount > 0 && (item.kind !== 'company_funds' || ['company_advance', 'receipt'].includes(draft.documentType)));
+      item.status = canUse ? 'ready' : 'needs_review';
+      delete item.error;
+      saveState();
+      renderInbox();
     }
     function applyTelegramIncoming(id) {
       const item = state.telegram?.inbox?.find(record => record.id === id);
@@ -4180,6 +4235,9 @@ ${worksheets}
     window.markInvoicePaid = markInvoicePaid;
     window.applyTelegramIncoming = applyTelegramIncoming;
     window.processTelegramIncoming = processTelegramIncoming;
+    window.openTelegramReview = openTelegramReview;
+    window.closeTelegramReview = closeTelegramReview;
+    window.saveTelegramReview = saveTelegramReview;
     window.rejectTelegramIncoming = rejectTelegramIncoming;
     window.configureTelegramChat = configureTelegramChat;
     byId('invoiceDate').value = today();
