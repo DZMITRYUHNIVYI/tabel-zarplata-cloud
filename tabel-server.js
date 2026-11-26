@@ -18,6 +18,11 @@ const HISTORY_KEEP = 500;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const TELEGRAM_FILES_DIR = path.join(DATA_DIR, 'telegram-files');
+const TELEGRAM_FILE_LIMIT = 20 * 1024 * 1024;
+const AI_PROCESSING = new Set();
 
 function send(res, status, body, type = 'text/plain; charset=utf-8') {
   res.writeHead(status, {
@@ -232,6 +237,223 @@ function telegramAttachment(message) {
   return null;
 }
 
+function compactName(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-ZА-ЯЁ0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function wordSimilarity(left, right) {
+  const a = compactName(left).split(' ').filter(Boolean);
+  const b = compactName(right).split(' ').filter(Boolean);
+  if (!a.length || !b.length) return 0;
+  const common = a.filter(word => b.includes(word)).length;
+  return (2 * common) / (a.length + b.length);
+}
+
+function matchPerson(people, name) {
+  const needle = compactName(name);
+  if (!needle) return null;
+  const exact = people.find(person => compactName(person.name) === needle);
+  if (exact) return { person: exact, confidence: 1 };
+  const ranked = people
+    .map(person => ({ person, confidence: wordSimilarity(person.name, name) }))
+    .sort((a, b) => b.confidence - a.confidence);
+  return ranked[0]?.confidence >= 0.8 ? ranked[0] : null;
+}
+
+function matchProject(projects, name) {
+  const needle = compactName(name);
+  if (!needle) return null;
+  const exact = projects.find(project => compactName(project.name) === needle);
+  if (exact) return { project: exact, confidence: 1 };
+  const ranked = projects
+    .map(project => ({ project, confidence: wordSimilarity(project.name, name) }))
+    .sort((a, b) => b.confidence - a.confidence);
+  return ranked[0]?.confidence >= 0.75 ? ranked[0] : null;
+}
+
+function validMonth(value) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || '')) ? String(value) : '';
+}
+
+function validDate(value, fallback) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : fallback;
+}
+
+function nextMonth(date) {
+  const value = new Date(`${date.slice(0, 7)}-01T00:00:00Z`);
+  value.setUTCMonth(value.getUTCMonth() + 1);
+  return value.toISOString().slice(0, 7);
+}
+
+function receivedDate(record) {
+  return String(record.receivedAt || new Date().toISOString()).slice(0, 10);
+}
+
+async function downloadTelegramAttachment(record) {
+  const source = record.source || {};
+  if (!source.fileId) return null;
+  if (!TELEGRAM_BOT_TOKEN) throw new Error('Не задан токен Telegram-бота.');
+  if (Number(source.size || 0) > TELEGRAM_FILE_LIMIT) throw new Error('Файл больше 20 МБ.');
+  const metaResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${encodeURIComponent(source.fileId)}`);
+  const meta = await metaResponse.json();
+  if (!metaResponse.ok || !meta.ok || !meta.result?.file_path) throw new Error(meta.description || 'Telegram не отдал файл.');
+  const fileResponse = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${meta.result.file_path}`);
+  if (!fileResponse.ok) throw new Error('Не удалось скачать файл из Telegram.');
+  const bytes = Buffer.from(await fileResponse.arrayBuffer());
+  if (bytes.length > TELEGRAM_FILE_LIMIT) throw new Error('Файл больше 20 МБ.');
+  fs.mkdirSync(TELEGRAM_FILES_DIR, { recursive: true });
+  const extension = path.extname(source.fileName || meta.result.file_path || '').slice(0, 12) || '.bin';
+  const filePath = path.join(TELEGRAM_FILES_DIR, `${record.id}${extension}`);
+  fs.writeFileSync(filePath, bytes);
+  return { bytes, filePath, mimeType: source.mimeType || fileResponse.headers.get('content-type') || 'application/octet-stream' };
+}
+
+function responseText(payload) {
+  if (typeof payload.output_text === 'string' && payload.output_text.trim()) return payload.output_text;
+  const fragments = [];
+  for (const output of payload.output || []) {
+    for (const content of output.content || []) {
+      if (typeof content.text === 'string') fragments.push(content.text);
+    }
+  }
+  return fragments.join('\n');
+}
+
+function jsonFromAi(text) {
+  const cleaned = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start < 0 || end < start) throw new Error('ИИ вернул ответ не в формате JSON.');
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
+
+function aiInstructions(record) {
+  const purpose = record.kind;
+  return `Ты извлекаешь данные для программы учёта рабочих часов и выплат. Язык документа может быть русским, немецким, польским, украинским или английским.\n\nТип входящего чата: ${purpose}.\n\nВерни ТОЛЬКО корректный JSON без Markdown. Используй поля:\n{\n  "documentType": "timesheet|salary_advance|company_advance|receipt|compensation|unknown",\n  "confidence": 0.0,\n  "summary": "кратко по-русски",\n  "projectName": "название объекта или пустая строка",\n  "month": "YYYY-MM или пустая строка",\n  "date": "YYYY-MM-DD или пустая строка",\n  "personName": "ФАМИЛИЯ ИМЯ или пустая строка",\n  "amount": 0,\n  "currency": "EUR",\n  "category": "топливо|инструмент|материалы|билет|другое",\n  "notes": "что куплено или за что деньги",\n  "entries": [{"personName":"ФАМИЛИЯ ИМЯ", "dailyHours":[{"day":1,"hours":8}]}],\n  "excludedPeople": ["люди в документе, которых нельзя уверенно сопоставить"]\n}\n\nПравила: для табеля извлеки часы по каждому календарному дню; не выдумывай часы. В чате рабочих денег отличи выдачу денег сотруднику от чека за уже выданные средства. В чате компенсаций это личные деньги сотрудника, которые фирма должна вернуть. При неопределённости укажи documentType unknown и низкую confidence.`;
+}
+
+async function askOpenAi(record, attachment) {
+  if (!OPENAI_API_KEY) throw new Error('Не задан ключ OpenAI API.');
+  const content = [{ type: 'input_text', text: `${aiInstructions(record)}\n\nПодпись к сообщению: ${record.source?.caption || 'нет'}` }];
+  if (attachment) {
+    const dataUrl = `data:${attachment.mimeType};base64,${attachment.bytes.toString('base64')}`;
+    if (attachment.mimeType.startsWith('image/')) content.push({ type: 'input_image', image_url: dataUrl, detail: 'high' });
+    else content.push({ type: 'input_file', filename: record.source?.fileName || 'telegram-file', file_data: dataUrl });
+  }
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify({ model: OPENAI_MODEL, input: [{ role: 'user', content }], temperature: 0 })
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error?.message || 'OpenAI не принял документ.');
+  return jsonFromAi(responseText(payload));
+}
+
+function buildAiDraft(state, record, analysis) {
+  const received = receivedDate(record);
+  const purpose = record.kind;
+  const defaultType = purpose === 'timesheet' ? 'timesheet' : purpose === 'salary_advance' ? 'salary_advance' : purpose === 'compensation' ? 'compensation' : 'unknown';
+  const documentType = purpose === 'company_funds'
+    ? ['company_advance', 'receipt'].includes(analysis.documentType) ? analysis.documentType : 'unknown'
+    : defaultType;
+  const personMatch = matchPerson(state.people || [], analysis.personName);
+  const projectMatch = matchProject(state.projects || [], analysis.projectName);
+  const draft = {
+    documentType,
+    confidence: Math.max(0, Math.min(1, Number(analysis.confidence) || 0)),
+    summary: String(analysis.summary || ''),
+    personName: String(analysis.personName || ''),
+    personId: personMatch?.person.id || '',
+    projectName: String(analysis.projectName || ''),
+    projectId: projectMatch?.project.id || '',
+    month: validMonth(analysis.month),
+    date: validDate(analysis.date, received),
+    amount: Math.max(0, Number(analysis.amount) || 0),
+    currency: String(analysis.currency || 'EUR').toUpperCase() === 'EUR' ? '€' : String(analysis.currency || '€'),
+    category: String(analysis.category || 'Другое'),
+    notes: String(analysis.notes || ''),
+    excludedPeople: Array.isArray(analysis.excludedPeople) ? analysis.excludedPeople.map(String).filter(Boolean).slice(0, 50) : [],
+  };
+  draft.reimbursementMonth = nextMonth(draft.date);
+  if (documentType === 'timesheet') {
+    const dayCount = draft.month ? new Date(Number(draft.month.slice(0, 4)), Number(draft.month.slice(5, 7)), 0).getDate() : 31;
+    const entries = [];
+    for (const row of Array.isArray(analysis.entries) ? analysis.entries : []) {
+      const match = matchPerson(state.people || [], row?.personName);
+      if (!match) {
+        if (row?.personName) draft.excludedPeople.push(String(row.personName));
+        continue;
+      }
+      const hours = Array.from({ length: dayCount }, () => 0);
+      for (const item of Array.isArray(row.dailyHours) ? row.dailyHours : []) {
+        const day = Number(item?.day);
+        const hoursValue = Number(item?.hours);
+        if (day >= 1 && day <= dayCount && Number.isFinite(hoursValue) && hoursValue >= 0 && hoursValue <= 24) hours[day - 1] = hoursValue;
+      }
+      entries.push({ personId: match.person.id, personName: match.person.name, hours });
+    }
+    draft.entries = entries;
+  }
+  return draft;
+}
+
+function isReadyDraft(record) {
+  const draft = record.ai || {};
+  if (record.kind === 'timesheet') return Boolean(draft.projectId && draft.month && draft.entries?.length);
+  if (record.kind === 'company_funds' && !['company_advance', 'receipt'].includes(draft.documentType)) return false;
+  return Boolean(draft.personId && Number(draft.amount) > 0);
+}
+
+async function processTelegramIncoming(recordId) {
+  if (AI_PROCESSING.has(recordId)) return { queued: true };
+  AI_PROCESSING.add(recordId);
+  try {
+    const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
+    const record = current?.telegram?.inbox?.find(item => item.id === recordId);
+    if (!record) throw new Error('Сообщение не найдено.');
+    if (record.kind === 'unconfigured') throw new Error('Сначала назначьте этому чату тип.');
+    record.status = 'processing';
+    delete record.error;
+    writeSystemState(current);
+    const attachment = await downloadTelegramAttachment(record);
+    const latest = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
+    const latestRecord = latest?.telegram?.inbox?.find(item => item.id === recordId);
+    if (!latest || !latestRecord) throw new Error('Сообщение изменилось во время обработки.');
+    const analysis = await askOpenAi(latestRecord, attachment);
+    latestRecord.ai = buildAiDraft(latest, latestRecord, analysis);
+    latestRecord.status = isReadyDraft(latestRecord) ? 'ready' : 'needs_review';
+    latestRecord.processedAt = new Date().toISOString();
+    if (attachment) latestRecord.source.localFile = path.basename(attachment.filePath);
+    writeSystemState(latest);
+    return { ok: true, status: latestRecord.status, record: latestRecord };
+  } catch (error) {
+    const current = fs.existsSync(STATE_FILE) ? readJson(STATE_FILE) : null;
+    const record = current?.telegram?.inbox?.find(item => item.id === recordId);
+    if (record) {
+      record.status = 'failed';
+      record.error = error.message || 'Ошибка обработки ИИ.';
+      writeSystemState(current);
+    }
+    return { ok: false, error: error.message || 'Ошибка обработки ИИ.' };
+  } finally {
+    AI_PROCESSING.delete(recordId);
+  }
+}
+
+function queueTelegramProcessing(recordId) {
+  if (AI_PROCESSING.has(recordId)) return;
+  setTimeout(() => {
+    void processTelegramIncoming(recordId).catch(error => console.error(`Telegram AI processing failed: ${error.message}`));
+  }, 0);
+}
+
 function messageKind(state, chatId) {
   const config = (state.telegram?.chats || []).find(chat => String(chat.chatId) === String(chatId));
   return ['timesheet', 'salary_advance', 'company_funds', 'advance', 'receipt', 'compensation'].includes(config?.purpose) ? config.purpose : 'unconfigured';
@@ -323,7 +545,14 @@ const server = http.createServer(async (req, res) => {
       }
       const update = JSON.parse(await readBody(req));
       const result = appendTelegramIncoming(update);
+      if (result.record?.kind && result.record.kind !== 'unconfigured') queueTelegramProcessing(result.record.id);
       return send(res, 200, JSON.stringify({ ok: true, ...result }), 'application/json; charset=utf-8');
+    }
+
+    const telegramProcessMatch = url.pathname.match(/^\/api\/telegram\/process\/([^/]+)$/);
+    if (req.method === 'POST' && telegramProcessMatch) {
+      const result = await processTelegramIncoming(decodeURIComponent(telegramProcessMatch[1]));
+      return send(res, result.ok ? 200 : 422, JSON.stringify(result), 'application/json; charset=utf-8');
     }
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/tabel-zarplata-app.html')) {

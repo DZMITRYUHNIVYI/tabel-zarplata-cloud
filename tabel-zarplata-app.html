@@ -2760,9 +2760,10 @@
         const chatSetup = item.kind === 'unconfigured'
           ? `<div class="row-actions"><select id="telegram-chat-${item.id}"><option value="timesheet">Табели</option><option value="salary_advance">Личные авансы</option><option value="company_funds">Рабочие деньги и чеки</option><option value="compensation">Компенсации</option></select><button class="good" onclick="configureTelegramChat('${item.id}')">Назначить чат</button></div>`
           : '';
+        const canProcess = ['received', 'failed'].includes(item.status) && item.kind !== 'unconfigured';
         const actions = item.status === 'applied' || item.status === 'rejected'
           ? ''
-          : chatSetup || `<div class="row-actions">${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
+          : chatSetup || `<div class="row-actions">${canProcess ? `<button onclick="processTelegramIncoming('${item.id}')">${item.status === 'failed' ? 'Повторить ИИ' : 'Распознать ИИ'}</button>` : ''}${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
         return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${incomingStatusText(item.status)}</span>`, received, actions];
       });
       tableTarget.innerHTML = table(['Тип', 'Чат', 'Источник', 'Результат ИИ', 'Статус', 'Получено', ''], rows, 'Входящих сообщений из Telegram пока нет');
@@ -2828,6 +2829,24 @@
       item.appliedAt = new Date().toISOString();
       saveState();
       render();
+    }
+    async function processTelegramIncoming(id) {
+      const item = state.telegram?.inbox?.find(record => record.id === id);
+      if (!item || item.kind === 'unconfigured') return;
+      item.status = 'processing';
+      renderInbox();
+      try {
+        const baseUrl = CLOUD_API.replace(/\/api\/state$/, '');
+        const response = await fetch(`${baseUrl}/api/telegram/process/${encodeURIComponent(id)}`, { method: 'POST' });
+        const result = await response.json();
+        await loadCloudState();
+        render({ skipSave: true });
+        if (!response.ok) alert(result.error || 'Не удалось распознать документ.');
+      } catch (error) {
+        await loadCloudState();
+        render({ skipSave: true });
+        alert('Не удалось связаться с сервером ИИ.');
+      }
     }
     function rejectTelegramIncoming(id) {
       const item = state.telegram?.inbox?.find(record => record.id === id);
@@ -4160,6 +4179,7 @@ ${worksheets}
     window.deleteInvoice = deleteInvoice;
     window.markInvoicePaid = markInvoicePaid;
     window.applyTelegramIncoming = applyTelegramIncoming;
+    window.processTelegramIncoming = processTelegramIncoming;
     window.rejectTelegramIncoming = rejectTelegramIncoming;
     window.configureTelegramChat = configureTelegramChat;
     byId('invoiceDate').value = today();
