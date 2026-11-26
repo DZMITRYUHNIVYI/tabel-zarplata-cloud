@@ -169,7 +169,18 @@ function validateIncomingState(current, incoming, clientBaseRevision) {
     || idsMissing(current.expenses, incoming.expenses)
     || idsMissing(current.telegram?.inbox, incoming.telegram?.inbox)
     || sheetEntriesMissing(current.timesheets, incoming.timesheets);
+  // A stale tab must not silently change the server-side processing result.
+  const incomingInbox = new Map((incoming.telegram?.inbox || []).map(item => [String(item.id), item]));
+  const inboxStatusChanged = (current.telegram?.inbox || []).some(item => {
+    const next = incomingInbox.get(String(item.id));
+    return next && (
+      String(next.status || '') !== String(item.status || '')
+      || String(next.appliedAt || '') !== String(item.appliedAt || '')
+      || Boolean(next.autoApplied) !== Boolean(item.autoApplied)
+    );
+  });
   const destructive = missingExistingRecords
+    || inboxStatusChanged
     || after.people < before.people
     || after.projects < before.projects
     || after.timesheets < before.timesheets
@@ -320,6 +331,14 @@ function matchProject(projects, name) {
   const best = ranked[0];
   if (!best) return null;
   if (best.confidence >= 0.75 || (best.tokens.count >= 2 && best.tokens.coverage >= 0.65 && best.tokens.hasDistinctiveMatch)) return best;
+  // A city or site marker can be enough when it occurs in exactly one known project.
+  const uniqueTokenMatch = best.tokens.count === 1 && best.tokens.coverage >= 0.9
+    && namesFor(best.project).some(projectName => {
+      const shared = projectTokenMatch(projectName, name);
+      const token = compactName(projectName).split(' ').find(value => value.length >= 6 && compactName(name).split(' ').includes(value));
+      return shared.count === 1 && token && projects.filter(project => namesFor(project).some(candidate => compactName(candidate).split(' ').includes(token))).length === 1;
+    });
+  if (uniqueTokenMatch) return { ...best, confidence: Math.max(best.confidence, 0.76) };
   return null;
 }
 
@@ -492,6 +511,8 @@ function buildAiDraft(state, record, analysis) {
       entries.push({ personId: match.person.id, personName: match.person.name, hours });
     }
     draft.entries = entries;
+    const recognized = new Set(entries.map(entry => compactName(entry.personName)));
+    draft.excludedPeople = [...new Set(draft.excludedPeople.filter(name => !recognized.has(compactName(name))))];
   }
   return draft;
 }
