@@ -183,6 +183,7 @@ function validateIncomingState(current, incoming, clientBaseRevision) {
     return next && (
       String(next.status || '') !== String(item.status || '')
       || String(next.appliedAt || '') !== String(item.appliedAt || '')
+      || String(next.hiddenAt || '') !== String(item.hiddenAt || '')
       || Boolean(next.autoApplied) !== Boolean(item.autoApplied)
     );
   });

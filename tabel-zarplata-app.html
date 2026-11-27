@@ -1730,7 +1730,7 @@
       <div class="panel">
         <div class="panel-head">
           <h2>Входящие из Telegram</h2>
-          <div class="toolbar"><button id="inboxRefreshBtn" type="button">Обновить</button></div>
+          <div class="toolbar"><button id="inboxDeletedBtn" type="button" aria-pressed="false">Удалённые</button><button id="inboxRefreshBtn" type="button">Обновить</button></div>
         </div>
         <div class="panel-body">
           <div class="grid three" id="inboxMetrics"></div>
@@ -1778,6 +1778,7 @@
     let tableSumSelection = null;
     let isSelectingTableSum = false;
     let activeInboxReviewId = null;
+    let showDeletedInbox = false;
 
     function applyUiZoom(value) {
       uiZoom = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, Math.round(value * 100) / 100));
@@ -2170,7 +2171,7 @@
       return `<button class="workspace-action" type="button" data-workspace-view="${view}"><span class="name">${name}</span><span class="value">${value}</span><span class="hint">${hint}</span></button>`;
     }
     function renderWorkspace() {
-      const inbox = state.telegram?.inbox || [];
+      const inbox = (state.telegram?.inbox || []).filter(item => !item.hiddenAt);
       const awaiting = inbox.filter(item => ['received', 'processing', 'ready', 'needs_review', 'failed'].includes(item.status)).length;
       const openMandates = (state.mandates || []).filter(item => item.payment !== 'paid');
       const overdueMandates = openMandates.filter(item => mandateAttention(item) === 'overdue').length;
@@ -2941,7 +2942,10 @@
       const metrics = byId('inboxMetrics');
       const tableTarget = byId('inboxTable');
       if (!metrics || !tableTarget) return;
-      const inbox = state.telegram?.inbox || [];
+      const allInbox = state.telegram?.inbox || [];
+      const inbox = allInbox.filter(item => showDeletedInbox ? Boolean(item.hiddenAt) : !item.hiddenAt);
+      byId('inboxDeletedBtn').textContent = showDeletedInbox ? 'Вернуться во входящие' : `Удалённые (${allInbox.filter(item => item.hiddenAt).length})`;
+      byId('inboxDeletedBtn').setAttribute('aria-pressed', String(showDeletedInbox));
       const awaiting = inbox.filter(item => ['received', 'processing', 'ready', 'needs_review'].includes(item.status)).length;
       const ready = inbox.filter(item => item.status === 'ready').length;
       const applied = inbox.filter(item => item.status === 'applied').length;
@@ -2958,9 +2962,10 @@
           : '';
         const canProcess = ['received', 'failed'].includes(item.status) && item.kind !== 'unconfigured';
         const reviewButton = item.status === 'needs_review' ? `<button data-inbox-review="${item.id}">Проверить</button>` : '';
-        const actions = item.status === 'applied' || item.status === 'rejected'
+        const regularActions = item.status === 'applied' || item.status === 'rejected'
           ? ''
           : chatSetup || `<div class="row-actions">${canProcess ? `<button onclick="processTelegramIncoming('${item.id}')">${item.status === 'failed' ? 'Повторить ИИ' : 'Распознать ИИ'}</button>` : ''}${reviewButton}${canApply ? `<button class="good" onclick="applyTelegramIncoming('${item.id}')">Внести</button>` : ''}<button class="danger" onclick="rejectTelegramIncoming('${item.id}')">Исключить</button></div>`;
+        const actions = showDeletedInbox ? `<button data-inbox-restore="${escapeHtml(item.id)}">Восстановить</button>` : `${regularActions}<button class="danger" data-inbox-hide="${escapeHtml(item.id)}">Удалить</button>`;
         const statusText = item.autoApplied ? 'Внесено автоматически' : incomingStatusText(item.status);
         return [incomingKindText(item.kind), escapeHtml(item.source?.chatTitle || 'Telegram'), escapeHtml(item.source?.fileName || item.source?.caption || 'Сообщение'), escapeHtml(incomingSummary(item)), `<span class="status ${incomingStatusClass(item.status)}">${statusText}</span>`, received, actions];
       });
@@ -2969,6 +2974,17 @@
         button.addEventListener('click', () => openTelegramReview(button.dataset.inboxReview));
       });
       renderInboxReview();
+    }
+    function setInboxHidden(id, hidden) {
+      const item = state.telegram?.inbox?.find(record => record.id === id);
+      if (!item) return;
+      if (hidden && !confirm('Удалить сообщение из входящих? Его можно будет восстановить. Уже внесённые данные сохранятся; текущая обработка не остановится.')) return;
+      if (hidden) item.hiddenAt = new Date().toISOString();
+      else delete item.hiddenAt;
+      if (hidden && activeInboxReviewId === id) activeInboxReviewId = null;
+      saveState();
+      renderInbox();
+      renderWorkspace();
     }
     function renderInboxReview() {
       const target = byId('inboxReviewPanel');
@@ -4375,6 +4391,13 @@ ${worksheets}
     byId('inboxRefreshBtn').addEventListener('click', async () => {
       await loadCloudState();
       render({ skipSave: true });
+    });
+    byId('inboxDeletedBtn').addEventListener('click', () => { showDeletedInbox = !showDeletedInbox; activeInboxReviewId = null; renderInbox(); });
+    byId('inboxTable').addEventListener('click', event => {
+      const hide = event.target.closest('[data-inbox-hide]');
+      const restore = event.target.closest('[data-inbox-restore]');
+      if (hide) setInboxHidden(hide.dataset.inboxHide, true);
+      if (restore) setInboxHidden(restore.dataset.inboxRestore, false);
     });
     byId('newSheetBtn').addEventListener('click', startNewSheet);
     byId('cancelNewSheetBtn').addEventListener('click', cancelNewSheet);
