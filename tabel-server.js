@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { isObviousTelegramNoise } = require('./telegram-noise');
+const { expandSharedTimesheet } = require('./shared-timesheet');
 
 const portArg = process.argv.find(arg => arg.startsWith('--port='));
 const PORT = Number(process.env.PORT || (portArg ? portArg.split('=')[1] : 8765));
@@ -439,7 +440,8 @@ async function askOpenAi(record, attachment) {
   const signaturePrompt = record.kind === 'timesheet'
     ? '\n\nОтдельно проверь нижнюю часть документа: есть ли собственноручная подпись ответственного по объекту, бауляйтера или руководителя. Верни signaturePresent (true/false), signerName, signerRole и signatureConfidence от 0 до 1. Подпись сотрудника не считай подписью ответственного.'
     : '';
-  const content = [{ type: 'input_text', text: `${aiInstructions(record)}${signaturePrompt}\n\nПодпись к сообщению: ${record.source?.caption || 'нет'}` }];
+  const sharedPrompt = record.kind === 'timesheet' ? '\nЕсли несколько сотрудников указаны в шапке, а ниже одна общая сетка, верни layout: "shared_schedule", sharedEmployees: [имена всех людей], sharedDailyHours: [{"date":"YYYY-MM-DD","hours":9.5}], sharedGrandTotal: общий итог. В длительности 9:30 или 9.30 означает 9.5 часа, не 9.3. Не придумывай имена или часы; при сомнении укажи это в summary.' : '';
+  const content = [{ type: 'input_text', text: `${aiInstructions(record)}${signaturePrompt}${sharedPrompt}\n\nПодпись к сообщению: ${record.source?.caption || 'нет'}` }];
   if (attachment) {
     const dataUrl = `data:${attachment.mimeType};base64,${attachment.bytes.toString('base64')}`;
     if (attachment.mimeType.startsWith('image/')) content.push({ type: 'input_image', image_url: dataUrl, detail: 'high' });
@@ -543,7 +545,10 @@ function buildAiDraft(state, record, analysis) {
       bucket.set(person.id, existing);
       entriesByMonth.set(month, bucket);
     };
-    for (const row of Array.isArray(analysis.entries) ? analysis.entries : []) {
+    const expanded = expandSharedTimesheet(analysis);
+    if (expanded.warning) draft.warnings.push(expanded.warning);
+    draft.sharedSchedule = analysis.layout === 'shared_schedule';
+    for (const row of expanded.rows) {
       const match = matchPerson(state.people || [], row?.personName);
       if (!match) {
         if (row?.personName) draft.excludedPeople.push(String(row.personName));
@@ -595,7 +600,7 @@ function isReadyDraft(record) {
     const monthEntries = draft.monthEntries && typeof draft.monthEntries === 'object'
       ? draft.monthEntries
       : { [draft.month || '']: draft.entries || [] };
-    return Boolean((draft.signaturePresent || draft.adminApproved) && draft.projectId && Object.values(monthEntries).some(entries => Array.isArray(entries) && entries.length));
+    return Boolean((draft.signaturePresent || draft.adminApproved) && (!draft.sharedSchedule || draft.adminApproved) && !(draft.warnings || []).length && draft.projectId && Object.values(monthEntries).some(entries => Array.isArray(entries) && entries.length));
   }
   if (record.kind === 'company_funds' && !['company_advance', 'receipt'].includes(draft.documentType)) return false;
   return Boolean(draft.personId && Number(draft.amount) > 0);
