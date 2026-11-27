@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { isObviousTelegramNoise } = require('./telegram-noise');
 const { expandSharedTimesheet } = require('./shared-timesheet');
+const { parseRussoReaction } = require('./russo-reactions');
 
 const portArg = process.argv.find(arg => arg.startsWith('--port='));
 const PORT = Number(process.env.PORT || (portArg ? portArg.split('=')[1] : 8765));
@@ -812,10 +813,29 @@ function recoverInterruptedAiProcessing() {
 
 function messageKind(state, chatId) {
   const config = (state.telegram?.chats || []).find(chat => String(chat.chatId) === String(chatId));
-  return ['timesheet', 'salary_advance', 'company_funds', 'advance', 'receipt', 'compensation', 'approval'].includes(config?.purpose) ? config.purpose : 'unconfigured';
+  return ['timesheet', 'salary_advance', 'company_funds', 'advance', 'receipt', 'compensation', 'approval', 'russo'].includes(config?.purpose) ? config.purpose : 'unconfigured';
 }
 
 function appendTelegramIncoming(update) {
+  if (update.message_reaction) {
+    const current = readState().state;
+    if (!current) return { ignored: true };
+    const ids = (current.telegram?.chats || []).filter(chat => chat.purpose === 'russo').map(chat => chat.chatId);
+    const reaction = parseRussoReaction(update, ids);
+    if (!reaction) return { ignored: true };
+    current.telegram.inbox = Array.isArray(current.telegram.inbox) ? current.telegram.inbox : [];
+    if (current.telegram.inbox.some(item => item.source?.updateId === reaction.updateId)) return { duplicate: true };
+    const record = {
+      id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, kind: 'russo', status: 'received',
+      receivedAt: new Date().toISOString(),
+      source: { updateId: reaction.updateId, chatId: reaction.chatId, chatTitle: 'Russo', messageId: reaction.messageId, senderId: reaction.actorId,
+        caption: reaction.action === 'thumb_added' ? 'Реакция на заявку: требуется сверка выплаты' : 'Реакция на заявку снята: требуется сверка' },
+      reaction, ai: {}
+    };
+    current.telegram.inbox.unshift(record);
+    writeSystemState(current);
+    return { record };
+  }
   const message = update.message || update.channel_post;
   if (!message || !message.chat) return { ignored: true };
   ensureSeedState();
@@ -865,7 +885,7 @@ async function registerTelegramWebhook() {
       body: JSON.stringify({
         url: webhookUrl,
         secret_token: TELEGRAM_WEBHOOK_SECRET,
-        allowed_updates: ['message', 'channel_post']
+        allowed_updates: ['message', 'channel_post', 'message_reaction']
       })
     });
     const result = await response.json();
@@ -927,7 +947,7 @@ const server = http.createServer(async (req, res) => {
       }
       const update = JSON.parse(await readBody(req));
       const result = appendTelegramIncoming(update);
-      if (result.record?.kind && !['unconfigured', 'approval'].includes(result.record.kind)) queueTelegramProcessing(result.record.id);
+      if (result.record?.kind && !['unconfigured', 'approval', 'russo'].includes(result.record.kind)) queueTelegramProcessing(result.record.id);
       return send(res, 200, JSON.stringify({ ok: true, ...result }), 'application/json; charset=utf-8');
     }
 

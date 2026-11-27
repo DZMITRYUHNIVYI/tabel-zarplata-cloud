@@ -1884,6 +1884,22 @@
       data.telegram.inbox = Array.isArray(data.telegram.inbox) ? data.telegram.inbox : [];
       return data;
     }
+    function reconcileKnownTelegramChats(data) {
+      let changed = false;
+      const chats = data.telegram.chats;
+      const inbox = data.telegram.inbox;
+      const russoIds = [...new Set(inbox.filter(item => String(item.source?.chatTitle || '').trim().toLocaleLowerCase() === 'russo' && item.source?.chatId).map(item => String(item.source.chatId)))];
+      if (russoIds.length === 1 && !chats.some(chat => String(chat.chatId) === russoIds[0]) && !chats.some(chat => chat.purpose === 'russo')) {
+        chats.push({ chatId: russoIds[0], title: 'Russo', purpose: 'russo' });
+        changed = true;
+      }
+      inbox.forEach(item => {
+        if (item.kind !== 'unconfigured' || !item.source?.chatId) return;
+        const chat = chats.find(candidate => String(candidate.chatId) === String(item.source.chatId));
+        if (chat && ['russo', 'approval'].includes(chat.purpose)) { item.kind = chat.purpose; changed = true; }
+      });
+      return changed;
+    }
     function saveLocalState() {
       if (stateLoadFailed) return;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1975,11 +1991,13 @@
           }
           backupLocalState();
           state = normalizeState(payload.state);
+          const reconciledChats = reconcileKnownTelegramChats(state);
           activeSheetId = state.timesheets[0]?.id || null;
           serverRevision = payload.revision || state._serverRevision || serverRevision;
           stateLoadFailed = false;
           cloudReady = true;
           saveLocalState();
+          if (reconciledChats) scheduleCloudSave();
           return true;
         }
         cloudReady = true;
@@ -2917,7 +2935,7 @@
       byId('settledSummary').textContent = settlementSummary(settled);
     }
     function incomingKindText(kind) {
-      return ({ timesheet: 'Табель', salary_advance: 'Личный аванс', company_funds: 'Рабочие деньги и чеки', company_advance: 'Выдача рабочих денег', advance: 'Аванс', receipt: 'Чек по рабочим деньгам', compensation: 'Компенсация', unconfigured: 'Чат не назначен' })[kind] || 'Не определено';
+      return ({ timesheet: 'Табель', salary_advance: 'Личный аванс', company_funds: 'Рабочие деньги и чеки', company_advance: 'Выдача рабочих денег', advance: 'Аванс', receipt: 'Чек по рабочим деньгам', compensation: 'Компенсация', russo: 'Руссо: выплаты', approval: 'Подтверждения', unconfigured: 'Чат не назначен' })[kind] || 'Не определено';
     }
     function incomingStatusText(status) {
       return ({ received: 'Получено', processing: 'ИИ обрабатывает', ready: 'Готово к проверке', needs_review: 'Нужна проверка', applied: 'Внесено', rejected: 'Исключено', failed: 'Ошибка обработки' })[status] || 'Ожидает';
@@ -2930,6 +2948,8 @@
     }
     function incomingSummary(item) {
       const draft = item.ai || {};
+      if (item.kind === 'russo') return item.reaction ? 'Реакция сохранена; выплата автоматически не отмечена' : 'Обработка выплат Russo ещё не подключена';
+      if (item.kind === 'approval') return 'Сообщение группы подтверждений';
       if (item.kind === 'timesheet') {
         const project = getProject(draft.projectId);
         const people = (draft.entries || []).filter(entry => getPerson(entry.personId)).length;
@@ -2958,9 +2978,9 @@
         const received = item.receivedAt ? new Date(item.receivedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '';
         const canApply = item.status === 'ready';
         const chatSetup = item.kind === 'unconfigured'
-          ? `<div class="row-actions"><select id="telegram-chat-${item.id}"><option value="timesheet">Табели</option><option value="salary_advance">Личные авансы</option><option value="company_funds">Рабочие деньги и чеки</option><option value="compensation">Компенсации</option></select><button class="good" onclick="configureTelegramChat('${item.id}')">Назначить чат</button></div>`
+          ? `<div class="row-actions"><select id="telegram-chat-${item.id}"><option value="timesheet">Табели</option><option value="salary_advance">Личные авансы</option><option value="company_funds">Рабочие деньги и чеки</option><option value="compensation">Компенсации</option><option value="russo">Руссо: выплаты</option><option value="approval">Подтверждения</option></select><button class="good" onclick="configureTelegramChat('${item.id}')">Назначить чат</button></div>`
           : '';
-        const canProcess = ['received', 'failed'].includes(item.status) && item.kind !== 'unconfigured';
+        const canProcess = ['received', 'failed'].includes(item.status) && !['unconfigured', 'russo', 'approval'].includes(item.kind);
         const reviewButton = item.status === 'needs_review' ? `<button data-inbox-review="${item.id}">Проверить</button>` : '';
         const regularActions = item.status === 'applied' || item.status === 'rejected'
           ? ''
