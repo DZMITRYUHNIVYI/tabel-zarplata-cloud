@@ -27,6 +27,7 @@ test('owner gate protects data, writes, files and leaves webhook protected separ
     assert.equal(mode.headers.get('access-control-allow-origin'), '*');
     assert.equal((await mode.json()).ownerLoginRequired, true);
     assert.equal((await fetch(`${base}/api/state`)).status, 401);
+    assert.equal((await fetch(`${base}/api/backup`)).status, 401);
     assert.equal((await fetch(`${base}/api/telegram/source/test`)).status, 401);
     assert.equal((await fetch(`${base}/api/state`, { method: 'POST', headers: { origin: base, 'content-type': 'application/json' }, body: '{}' })).status, 401);
     assert.equal((await fetch(`${base}/api/login`, { method: 'POST', headers: { origin: 'https://elsewhere.invalid', 'content-type': 'application/json' }, body: JSON.stringify({ password: 'example-password' }) })).status, 403);
@@ -35,6 +36,9 @@ test('owner gate protects data, writes, files and leaves webhook protected separ
     assert.equal(login.status, 200);
     const cookie = login.headers.get('set-cookie').split(';')[0];
     assert.equal((await fetch(`${base}/api/state`, { headers: { cookie } })).status, 200);
+    const backup = await fetch(`${base}/api/backup`, { headers: { cookie } });
+    assert.equal(backup.status, 200);
+    assert.equal((await backup.json()).format, 'tabel-backup-v1');
     assert.equal((await fetch(`${base}/api/state`, { method: 'POST', headers: { cookie, origin: 'https://elsewhere.invalid', 'content-type': 'application/json' }, body: '{}' })).status, 403);
     assert.equal((await fetch(`${base}/api/logout`, { method: 'POST', headers: { cookie, origin: base } })).status, 200);
     assert.equal((await fetch(`${base}/api/state`, { headers: { cookie } })).status, 401);

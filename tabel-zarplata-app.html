@@ -1440,6 +1440,7 @@
       </div>
       <div class="toolbar">
         <button id="exportJsonBtn" title="Скачать резервную копию">Экспорт</button>
+        <button id="exportFullBackupBtn" title="Скачать базу и сохранённые оригиналы">Резервная копия</button>
         <button id="exportExcelBtn" title="Скачать отчет для Excel">Excel</button>
         <label class="button" title="Загрузить резервную копию">Импорт <input id="importJsonInput" type="file" accept="application/json" hidden></label>
         <button id="pushLocalToCloudBtn" title="Перенести данные этого браузера на общий сервер">На сервер</button>
@@ -4501,6 +4502,22 @@ ${worksheets}
       applySheetPeopleSelection();
     });
     byId('exportJsonBtn').addEventListener('click', exportJson);
+    byId('exportFullBackupBtn').addEventListener('click', async () => {
+      const button = byId('exportFullBackupBtn');
+      button.disabled = true;
+      try {
+        const response = await fetch(`${CLOUD_API.replace(/\/api\/state$/, '')}/api/backup`, { cache: 'no-store', credentials: 'same-origin' });
+        if (!response.ok) throw new Error('backup unavailable');
+        const bundle = await response.json();
+        if (bundle.format !== 'tabel-backup-v1' || !Array.isArray(bundle.missing)) throw new Error('bad backup');
+        const url = URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url; link.download = `tabel-full-backup-${today()}.json`; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        alert(bundle.missing.length ? `Копия скачана. Внимание: не найдены оригиналы файлов: ${bundle.missing.length}.` : `Копия скачана. Оригиналов файлов: ${bundle.attachments.length}.`);
+      } catch { alert('Не удалось создать резервную копию. Проверьте вход в программу и доступность сервера.'); }
+      finally { button.disabled = false; }
+    });
     byId('exportExcelBtn').addEventListener('click', exportExcel);
     byId('importJsonInput').addEventListener('change', event => importJson(event.target.files[0]));
     byId('pushLocalToCloudBtn').addEventListener('click', pushLocalStateToCloud);

@@ -5,6 +5,7 @@ const { createOwnerAuth } = require('./owner-auth');
 const { isObviousTelegramNoise } = require('./telegram-noise');
 const { expandSharedTimesheet } = require('./shared-timesheet');
 const { parseRussoReaction } = require('./russo-reactions');
+const { buildBackup, inspectBackup } = require('./backup-bundle');
 
 const portArg = process.argv.find(arg => arg.startsWith('--port='));
 const PORT = Number(process.env.PORT || (portArg ? portArg.split('=')[1] : 8765));
@@ -963,6 +964,20 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/state') {
       return send(res, 200, JSON.stringify(readState()), 'application/json; charset=utf-8');
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/backup') {
+      if (!REQUIRE_OWNER_AUTH || !ownerAuth.configured) return send(res, 403, 'Protected owner access is required');
+      const payload = readState();
+      if (!payload.state) return send(res, 404, 'No data');
+      try {
+        const bundle = buildBackup(payload.state, TELEGRAM_FILES_DIR);
+        inspectBackup(bundle);
+        return send(res, 200, JSON.stringify(bundle), 'application/json; charset=utf-8');
+      } catch (error) {
+        console.error('Backup failed:', error.message);
+        return send(res, 500, 'Backup could not be created');
+      }
     }
 
     if (req.method === 'GET' && (url.pathname === '/health' || url.pathname === '/api/health')) {
