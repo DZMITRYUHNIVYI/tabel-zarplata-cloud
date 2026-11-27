@@ -1,6 +1,6 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY package.json tabel-server.js telegram-noise.js shared-timesheet.js russo-reactions.js tabel-zarplata-app.html ./
+COPY package.json tabel-server.js telegram-noise.js shared-timesheet.js russo-reactions.js owner-auth.js owner-login.html tabel-zarplata-app.html ./
 COPY data ./data
 ENV PORT=8765
 ENV HOST=0.0.0.0

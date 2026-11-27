@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход в программу</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #edf2f0; color: #18312f; font: 16px system-ui, sans-serif; }
+    main { width: min(100% - 32px, 400px); background: white; border: 1px solid #cad9d4; border-radius: 8px; padding: 28px; }
+    h1 { margin: 0 0 8px; font-size: 23px; }
+    p { color: #536964; line-height: 1.45; }
+    label { display: block; margin: 24px 0 8px; font-weight: 650; }
+    input, button { width: 100%; min-height: 48px; border-radius: 5px; font: inherit; }
+    input { border: 1px solid #a7bbb3; padding: 10px; }
+    button { margin-top: 16px; border: 0; color: white; background: #176c59; font-weight: 700; cursor: pointer; }
+    #error { color: #a33b36; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Табели и зарплата</h1>
+    <p>Вход владельца</p>
+    <form id="login">
+      <label for="password">Пароль</label>
+      <input id="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit">Войти</button>
+      <p id="error" role="alert"></p>
+    </form>
+  </main>
+  <script>
+    document.getElementById('login').addEventListener('submit', async event => {
+      event.preventDefault();
+      const error = document.getElementById('error');
+      const password = document.getElementById('password');
+      try {
+        const response = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: password.value }) });
+        password.value = '';
+        if (response.ok) location.replace('/');
+        else error.textContent = response.status === 503 ? 'Вход ещё не настроен владельцем.' : 'Не удалось войти. Проверьте пароль или попробуйте позже.';
+      } catch { error.textContent = 'Сервер недоступен. Попробуйте позже.'; }
+    });
+  </script>
+</body>
+</html>

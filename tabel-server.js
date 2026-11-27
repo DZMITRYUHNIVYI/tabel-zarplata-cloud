@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { createOwnerAuth } = require('./owner-auth');
 const { isObviousTelegramNoise } = require('./telegram-noise');
 const { expandSharedTimesheet } = require('./shared-timesheet');
 const { parseRussoReaction } = require('./russo-reactions');
@@ -21,6 +22,8 @@ const HISTORY_KEEP = 500;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
 const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+const REQUIRE_OWNER_AUTH = process.env.REQUIRE_OWNER_AUTH === '1';
+const ownerAuth = createOwnerAuth({ passwordHash: process.env.OWNER_PASSWORD_HASH, secureCookie: process.env.OWNER_INSECURE_LOCAL_COOKIE !== '1' });
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 // Full vision model is materially more reliable on handwritten tables than the mini variant.
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1';
@@ -37,19 +40,17 @@ function send(res, status, body, type = 'text/plain; charset=utf-8') {
   res.writeHead(status, {
     'Content-Type': type,
     'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    ...(!REQUIRE_OWNER_AUTH ? { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } : {}),
   });
   res.end(body);
 }
 
-function readBody(req) {
+function readBody(req, maxSize = MAX_BODY_SIZE) {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', chunk => {
       body += chunk;
-      if (body.length > MAX_BODY_SIZE) {
+      if (body.length > maxSize) {
         reject(new Error('too large'));
         req.destroy();
       }
@@ -922,6 +923,43 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === 'OPTIONS') return send(res, 204, '');
+
+    if (req.method === 'GET' && url.pathname === '/api/auth-mode') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+      return res.end(JSON.stringify({ ownerLoginRequired: REQUIRE_OWNER_AUTH }));
+    }
+
+    const isWebhook = req.method === 'POST' && url.pathname === '/api/telegram/webhook';
+    if (REQUIRE_OWNER_AUTH && !isWebhook) {
+      if (url.pathname === '/api/health' || url.pathname === '/health') {
+        return send(res, 200, JSON.stringify({ ok: true, authConfigured: ownerAuth.configured }), 'application/json; charset=utf-8');
+      }
+      if (req.method === 'POST') {
+        const expectedOrigin = PUBLIC_BASE_URL || `http://${req.headers.host}`;
+        if (req.headers.origin !== expectedOrigin) return send(res, 403, 'Forbidden');
+      }
+      if (url.pathname === '/login' && req.method === 'GET') return serveFile(res, path.join(ROOT, 'owner-login.html'), 'text/html; charset=utf-8');
+      if (url.pathname === '/api/login' && req.method === 'POST') {
+        if (!ownerAuth.configured) return send(res, 503, 'Owner authentication is not configured');
+        const data = JSON.parse(await readBody(req, 4096));
+        const token = ownerAuth.authenticate(data.password, req.socket.remoteAddress || 'unknown');
+        if (!token) return send(res, 401, 'Invalid credentials or too many attempts');
+        res.setHeader('Set-Cookie', ownerAuth.cookie(token));
+        return send(res, 200, JSON.stringify({ ok: true }), 'application/json; charset=utf-8');
+      }
+      if (url.pathname === '/api/logout' && req.method === 'POST') {
+        ownerAuth.logout(req);
+        res.setHeader('Set-Cookie', 'tabel_owner=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Secure');
+        return send(res, 200, JSON.stringify({ ok: true }), 'application/json; charset=utf-8');
+      }
+      if (!ownerAuth.session(req)) {
+        if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/tabel-zarplata-app.html')) {
+          res.writeHead(303, { Location: '/login', 'Cache-Control': 'no-store' });
+          return res.end();
+        }
+        return send(res, 401, 'Authentication required');
+      }
+    }
 
     if (req.method === 'GET' && url.pathname === '/api/state') {
       return send(res, 200, JSON.stringify(readState()), 'application/json; charset=utf-8');

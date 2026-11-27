@@ -1970,6 +1970,16 @@
     async function loadCloudState() {
       if (!isCloudMode) return false;
       try {
+        if (location.protocol === 'file:') {
+          try {
+            const cloudOrigin = CLOUD_API.replace(/\/api\/state$/, '');
+            const modeResponse = await fetch(`${cloudOrigin}/api/auth-mode`, { cache: 'no-store' });
+            if (modeResponse.ok && (await modeResponse.json()).ownerLoginRequired) {
+              location.replace(`${cloudOrigin}/`);
+              return false;
+            }
+          } catch {}
+        }
         const response = await fetch(CLOUD_API, { cache: 'no-store' });
         if (!response.ok) throw new Error('server unavailable');
         const payload = await response.json();
