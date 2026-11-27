@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { isObviousTelegramNoise } = require('./telegram-noise');
 
 const portArg = process.argv.find(arg => arg.startsWith('--port='));
 const PORT = Number(process.env.PORT || (portArg ? portArg.split('=')[1] : 8765));
@@ -821,9 +822,11 @@ function appendTelegramIncoming(update) {
   const attachment = telegramAttachment(message);
   const caption = String(message.caption || message.text || '').trim();
   if (!attachment && !caption) return { ignored: true };
+  const kind = messageKind(current, message.chat.id);
+  if (kind !== 'unconfigured' && isObviousTelegramNoise(caption, Boolean(attachment))) return { ignored: true };
   const record = {
     id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    kind: messageKind(current, message.chat.id),
+    kind,
     status: 'received',
     receivedAt: new Date().toISOString(),
     source: {
